@@ -61,8 +61,8 @@ if os.path.exists(f'{SCRATCH}/{DATASET}'):
 ds = Dataset(**kwargs)
 
 # compute clustering
-compute_clusters_sequence(ds)
-#compute_clusters_structure(ds)
+#compute_clusters_sequence(ds)
+compute_clusters_structure(ds)
 
 # zipping
 print('Compressing...')

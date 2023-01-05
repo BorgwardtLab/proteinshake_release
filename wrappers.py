@@ -1,44 +1,56 @@
-import os
+import os, itertools
+import numpy as np
+from collections import defaultdict
 import os.path as osp
 import tempfile
 import shutil
 import subprocess
 import pandas as pd
 import traceback
-#from joblib import Memory
+import re
+import numpy as np
+from joblib import Parallel, delayed
+from tqdm import tqdm
 
-from proteinshake.utils import protein_to_pdb
+def madoka_wrapper(paths, n_jobs):
+    assert shutil.which('MADOKA') is not None and shutil.which('dssp2') is not None,\
+           "No MADOKA/dssp2 installation found. Go here to install : http://madoka.denglab.org/download.html"
 
-""" Wrappers for external programs. """
+    pairs = list(itertools.combinations(range(len(paths)), 2))
+    todo = [(paths[p1], paths[p2]) for p1, p2 in pairs]
+    dist = defaultdict(lambda: {})
 
-#memory = Memory('./.tm_cache', verbose=0)
-#@memory.cache
-def tmalign_wrapper(pdb1, pdb2):
-    """Compute TM score with TMalign between two PDB structures.
-    Parameters
-    ----------
-    pdb1: str
-        Path to PDB.
-    arg2 : str
-        Path to PDB.
-    Returns
-    -------
-    float
-        TM score from `pdb1` to `pdb2`
-    float
-        TM score from `pdb2` to `pdb1`
-    float
-        RMSD between structures
-    """
-    assert shutil.which('TMalign') is not None,\
-           "No TMalign installation found. Go here to install : https://zhanggroup.org/TM-align/TMalign.cpp"
-    try:
-        out = subprocess.run(['TMalign','-outfmt','2', pdb1, pdb2], stdout=subprocess.PIPE).stdout.decode()
-        path1, path2, TM1, TM2, RMSD, ID1, ID2, IDali, L1, L2, Lali = out.split('\n')[1].split('\t')
-    except Exception as e:
-        print(e)
-        return -1.
-    return float(TM1), float(TM2), float(RMSD)
+    with tempfile.TemporaryDirectory() as tmpdir:
+
+        def dssp(path):
+            pdb = os.path.basename(path).rstrip('.pdb')
+            subprocess.run(['dssp2','-i', path, '-o', f'{tmpdir}/{pdb}.sse'], stdout=subprocess.PIPE)
+
+        def madoka(path1, path2):
+            cwd = os.path.dirname(path1)
+            pdb1 = os.path.basename(path1).rstrip('.pdb')
+            pdb2 = os.path.basename(path2).rstrip('.pdb')
+            subprocess.run(['MADOKA','-o', './', f'{pdb1}.sse', f'{pdb2}.sse'], cwd=tmpdir, stdout=subprocess.PIPE)
+            with open(f'{tmpdir}/{pdb1}-{pdb2}-result.txt', 'r') as file:
+                search = re.search('TM-score \d*.\d*', file.read())
+                tm_score = float(search.group(0).split()[1]) if not search is None else 0
+            return tm_score
+
+        Parallel(n_jobs=n_jobs)(delayed(dssp)(path) for path in tqdm(paths, desc='DSSP'))
+        output = Parallel(n_jobs=n_jobs)(delayed(madoka)(*pair) for pair in tqdm(todo, desc='MADOKA'))
+
+        for (pdb1, pdb2), tm in zip(todo, output):
+            dist[pdb1][pdb2] = tm
+            dist[pdb2][pdb1] = tm
+
+        num_proteins = len(paths)
+        DM = np.zeros((num_proteins, num_proteins))
+        DM = []
+        for i in range(num_proteins):
+            for j in range(i+1, num_proteins):
+                DM.append(dist[paths[j]][paths[i]][0])
+        DM = np.array(DM).reshape(-1, 1)
+        return DM
 
 
 def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
@@ -115,98 +127,3 @@ def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
                         representatives.append(pdb_id)
             clusters = [clusters[id] if id in clusters else -1 for id in ids]
             return clusters, representatives
-
-def dms_wrapper(protein, d=0.2):
-    """ Call DMS to compute a surface for the PDB.
-
-    Usage: dms input_file [-a] [-d density] [-g file] [-i file] [-n] [-w radius] [-v] -o file
-    -a	use all atoms, not just amino acids
-    -d	change density of points
-    -g	send messages to file
-    -i	calculate only surface for specified atoms
-    -n	calculate normals for surface points
-    -w	change probe radius
-    -v	verbose
-    -o	specify output file name (required)
-
-    See: https://www.cgl.ucsf.edu/chimera/docs/UsersGuide/midas/dms1.html#ref
-    """
-    with tempfile.TemporaryDirectory() as tf:
-        pdb_path = os.path.join(tf, "in.pdb")
-        dest = os.path.join(tf, "out.surf")
-        protein_to_pdb(protein, pdb_path)
-        assert shutil.which('dms') is not None, "DMS executable not in PATH go here to install https://www.cgl.ucsf.edu/chimera/docs/UsersGuide/midas/dms1.html#ref."
-        cmd = ['dms', pdb_path, '-n', '-d', str(d), '-o', dest]
-        subprocess.run(cmd,
-                       stdout=subprocess.DEVNULL,
-                       stderr=subprocess.STDOUT
-                       )
-        return _parse_dms(dest)
-
-def _parse_dms(path):
-    """ Extract surface points and normal vectors for each
-    point.
-
-    Parameters
-    ------------
-    path:
-        Path to DMS output file.
-
-    Returns
-    --------
-    pd.DataFrame
-        DataFrame with one row for each surface atom.
-    """
-    names = ['residue_name',
-             'residue_index',
-             'atom_name',
-             'x',
-             'y',
-             'z',
-             'point_type',
-             'area',
-             'x_norm',
-             'y_norm',
-             'z_norm'
-             ]
-    df = pd.read_csv(path,
-                     delim_whitespace=True,
-                     header=None,
-                     names=names
-                     )
-    df = df.dropna(axis=0)
-    return df
-
-def makeblastdb_wrapper(sequences, db_path, db_type='prot'):
-    assert shutil.which('makeblastdb') is not None,\
-           "No makeblastdb installation found. Go here to install : https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/"
-    with open(db_path, "w") as db:
-        for i, seq in enumerate(sequences):
-            db.write(f"> {i} \n{seq}")
-    cmd = ['makeblastdb',
-           '-dbtype',
-           db_type,
-           '-in',
-           db_path
-           ]
-    subprocess.run(cmd)
-
-def blastp_wrapper(query, db_path):
-    assert shutil.which('blastp') is not None,\
-           "No blastp installation found. Go here to install : https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/"
-    #  blastp -query inp.fasta -db ~/Temp/b.fasta -out res.out
-    with tempfile.TemporaryDirectory() as tmpdir:
-        with open(osp.join(tmpdir, "query.fasta"), "w") as q:
-            for seq in query:
-                q.write(f"> query_{i}\n{seq}")
-            cmd = ['blastp',
-                   '-query',
-                   osp.join(tmpdir, "query.fasta"),
-                   '-db',
-                   db_path,
-                   '-out',
-                   osp.join(tmpdir, "out.blastp")
-                   ]
-            subprocess.run(cmd)
-
-    pass

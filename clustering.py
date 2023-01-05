@@ -1,12 +1,10 @@
-import os, itertools
+import os
 import numpy as np
-from collections import defaultdict
-from joblib import Parallel, delayed
 from sklearn.cluster import AgglomerativeClustering
 from tqdm import tqdm
 from proteinshake.utils import save, unzip_file, write_avro
 
-from wrappers import cdhit_wrapper, tmalign_wrapper
+from wrappers import cdhit_wrapper, madoka_wrapper
 
 def replace_avro_files(dataset, proteins):
     residue_proteins = list(dataset.proteins(resolution='residue')[0])
@@ -57,39 +55,9 @@ def compute_clusters_structure(dataset):
         print('Computing the TM scores with use_precompute = False is very slow. Consider increasing n_jobs.')
 
     paths = [unzip_file(p, remove=False) if p.endswith('.gz') else p for p in tqdm(paths, desc='Unzipping')]
-
     pdbids = [dataset.get_id_from_filename(p) for p in paths]
-    pairs = list(itertools.combinations(range(len(paths)), 2))
-    todo = [(paths[p1], paths[p2]) for p1, p2 in pairs]
 
-    dist = defaultdict(lambda: {})
-
-    output = Parallel(n_jobs=dataset.n_jobs)(
-        delayed(tmalign_wrapper)(*pair) for pair in tqdm(todo, desc='Structure clustering')
-    )
-
-    for (pdb1, pdb2), d in zip(todo, output):
-        name1 = dataset.get_id_from_filename(pdb1)
-        name2 = dataset.get_id_from_filename(pdb2)
-        # each value is a tuple (tm-core, RMSD)
-        dist[name1][name2] = (d[0], d[2])
-        dist[name2][name1] = (d[0], d[2])
-
-    save(dist, dump_path)
-    num_proteins = len(paths)
-    DM = np.zeros((num_proteins, num_proteins))
-    DM = []
-    for i in range(num_proteins):
-        for j in range(i+1, num_proteins):
-            # take the largest TMscore (most similar) between both
-            # directions and convert to a distance
-            DM.append(
-                1 - max(
-                    dist[pdbids[i]][pdbids[j]][0],
-                    dist[pdbids[j]][pdbids[i]][0]
-                )
-            )
-    DM = np.array(DM).reshape(-1, 1)
+    DM = madoka_wrapper(paths, dataset.n_jobs)
 
     if isinstance(dataset.similarity_threshold_structure, float):
         thresholds = [dataset.similarity_threshold_structure]
