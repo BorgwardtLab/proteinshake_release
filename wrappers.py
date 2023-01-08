@@ -12,8 +12,36 @@ import numpy as np
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
+def tmalign_wrapper(pdb1, pdb2):
+    """Compute TM score with TMalign between two PDB structures.
+    Parameters
+    ----------
+    pdb1: str
+        Path to PDB.
+    arg2 : str
+        Path to PDB.
+    Returns
+    -------
+    float
+        TM score from `pdb1` to `pdb2`
+    float
+        TM score from `pdb2` to `pdb1`
+    float
+        RMSD between structures
+    """
+    assert shutil.which('TMalign') is not None,\
+           "No TMalign installation found. Go here to install : https://zhanggroup.org/TM-align/TMalign.cpp"
+    try:
+        out = subprocess.run(['TMalign','-outfmt','2', pdb1, pdb2], stdout=subprocess.PIPE).stdout.decode()
+        path1, path2, TM1, TM2, RMSD, ID1, ID2, IDali, L1, L2, Lali = out.split('\n')[1].split('\t')
+    except Exception as e:
+        print(e)
+        return -1.
+    return float(TM1), float(TM2), float(RMSD)
+
 def madoka_wrapper(paths, n_jobs):
-    assert shutil.which('MADOKA') is not None and shutil.which('dssp2') is not None,\
+    print('MADOKA')
+    assert shutil.which('MADOKA') is not None,\
            "No MADOKA/dssp2 installation found. Go here to install : http://madoka.denglab.org/download.html"
 
     pairs = list(itertools.combinations(range(len(paths)), 2))
@@ -27,17 +55,31 @@ def madoka_wrapper(paths, n_jobs):
             subprocess.run(['dssp2','-i', path, '-o', f'{tmpdir}/{pdb}.sse'], stdout=subprocess.PIPE)
 
         def madoka(path1, path2):
-            cwd = os.path.dirname(path1)
             pdb1 = os.path.basename(path1).rstrip('.pdb')
             pdb2 = os.path.basename(path2).rstrip('.pdb')
             subprocess.run(['MADOKA','-o', './', f'{pdb1}.sse', f'{pdb2}.sse'], cwd=tmpdir, stdout=subprocess.PIPE)
+
+        def read_output(path1, path2):
+            pdb1 = os.path.basename(path1).rstrip('.pdb')
+            pdb2 = os.path.basename(path2).rstrip('.pdb')
             with open(f'{tmpdir}/{pdb1}-{pdb2}-result.txt', 'r') as file:
                 search = re.search('TM-score \d*.\d*', file.read())
                 tm_score = float(search.group(0).split()[1]) if not search is None else 0
             return tm_score
 
+        def madoka2(paths):
+            print('Running MADOKA...')
+            pdbs = [os.path.basename(path).replace('.pdb','.sse') for path in paths]
+            subprocess.run(['MADOKA','-o', './', *pdbs], cwd=tmpdir, stdout=subprocess.PIPE)
+
         Parallel(n_jobs=n_jobs)(delayed(dssp)(path) for path in tqdm(paths, desc='DSSP'))
-        output = Parallel(n_jobs=n_jobs)(delayed(madoka)(*pair) for pair in tqdm(todo, desc='MADOKA'))
+        #Parallel(n_jobs=n_jobs)(delayed(madoka)(*pair) for pair in tqdm(todo, desc='MADOKA'))
+        import time
+        start = time.time()
+        madoka2(paths)
+        print(time.time()-start)
+        output = [read_output(*pair) for pair in tqdm(todo, desc='Reading')]
+
 
         for (pdb1, pdb2), tm in zip(todo, output):
             dist[pdb1][pdb2] = tm
@@ -48,7 +90,7 @@ def madoka_wrapper(paths, n_jobs):
         DM = []
         for i in range(num_proteins):
             for j in range(i+1, num_proteins):
-                DM.append(dist[paths[j]][paths[i]][0])
+                DM.append(dist[paths[j]][paths[i]])
         DM = np.array(DM).reshape(-1, 1)
         return DM
 
