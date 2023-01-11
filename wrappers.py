@@ -73,11 +73,11 @@ def madoka_wrapper(paths, n_jobs):
             subprocess.run(['MADOKA','-o', './', *pdbs], cwd=tmpdir, stdout=subprocess.PIPE)
 
         Parallel(n_jobs=n_jobs)(delayed(dssp)(path) for path in tqdm(paths, desc='DSSP'))
-        #Parallel(n_jobs=n_jobs)(delayed(madoka)(*pair) for pair in tqdm(todo, desc='MADOKA'))
-        import time
-        start = time.time()
-        madoka2(paths)
-        print(time.time()-start)
+        Parallel(n_jobs=n_jobs)(delayed(madoka)(*pair) for pair in tqdm(todo, desc='MADOKA'))
+        #import time
+        #start = time.time()
+        #madoka2(paths)
+        #print(time.time()-start)
         output = [read_output(*pair) for pair in tqdm(todo, desc='Reading')]
 
 

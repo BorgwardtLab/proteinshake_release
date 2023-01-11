@@ -42,7 +42,7 @@ def compute_clusters_sequence(dataset):
     save(representatives, f'{dataset.root}/{dataset.name}.cdhit.json')
     replace_avro_files(dataset, proteins)
 
-def compute_clusters_structure(dataset):
+def compute_clusters_structure_madoka(dataset):
     """ Launch TMalign on all pairs of proteins in dataset.
     Assign a cluster ID to each protein at protein-level key 'structure_cluster'.
 
@@ -50,7 +50,7 @@ def compute_clusters_structure(dataset):
     """
     proteins = list(dataset.proteins()[0])
     path_dict = {dataset.get_id_from_filename(os.path.basename(f)):f for f in dataset.get_raw_files()}
-    paths = [path_dict[p['protein']['ID']] for p in proteins][:50]
+    paths = [path_dict[p['protein']['ID']] for p in proteins][:300]
 
     dump_name = f'{dataset.name}.tmalign.json'
     dump_path = os.path.join(dataset.root, dump_name)
@@ -75,7 +75,7 @@ def compute_clusters_structure(dataset):
             p['protein'][f'structure_cluster_{d}'] = int(clusterer.labels_[i])
     replace_avro_files(dataset, proteins)
 
-def _compute_clusters_structure(dataset):
+def compute_clusters_structure_tmalign(dataset):
     """ Launch TMalign on all pairs of proteins in dataset.
     Assign a cluster ID to each protein at protein-level key 'structure_cluster'.
     Saves TMalign output to `dataset.root/{Dataset.__class__}.tmalign.json.gz`
@@ -103,7 +103,7 @@ def _compute_clusters_structure(dataset):
     dist = defaultdict(lambda: {})
 
     output = Parallel(n_jobs=dataset.n_jobs)(
-        delayed(tmalign_wrapper)(*pair) for pair in tqdm(todo, desc='Structure clustering')
+        delayed(tmalign_wrapper)(*pair) for pair in tqdm(todo, desc='TMalign')
     )
 
     for (pdb1, pdb2), d in zip(todo, output):
