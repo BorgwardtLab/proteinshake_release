@@ -11,6 +11,7 @@ mkdir -p $LOGDIR
 exec &>> $LOGDIR/submit.txt
 
 datasets=("GeneOntologyDataset" "EnzymeCommissionDataset" "PfamDataset" "ProteinProteinInterfaceDataset" "ProteinLigandInterfaceDataset" "TMAlignDataset" "SCOPDataset" "RCSBDataset" "AlphaFoldDataset")
+
 organisms=("arabidopsis_thaliana" "caenorhabditis_elegans" "candida_albicans" "danio_rerio" "dictyostelium_discoideum" "drosophila_melanogaster" "escherichia_coli" "glycine_max" "homo_sapiens" "methanocaldococcus_jannaschii" "mus_musculus" "oryza_sativa" "rattus_norvegicus" "saccharomyces_cerevisiae" "schizosaccharomyces_pombe" "zea_mays" "swissprot")
 
 for DATASET in "${datasets[@]}"; do
@@ -25,8 +26,9 @@ for DATASET in "${datasets[@]}"; do
         else
             NAME=$DATASET
         fi
+        echo $NAME
         # download
-        sbatch --ntasks 1 --cpus-per-task 20 --mem-per-cpu 3G --time 23:59:00 -o $LOGDIR/${NAME}_download.log -J $NAME --wait --wrap "python -m main --njobs 5 --dataset $DATASET --organism $ORGANISM"
+        sbatch --ntasks 1 --cpus-per-task 20 --mem-per-cpu 3G --time 23:59:00 -o $LOGDIR/${NAME}_download.log -J $NAME --wait --wrap "python -m main --njobs 20 --dataset $DATASET --organism $ORGANISM"
         echo "$DATASET downloaded."
         # parse
         if [[ $DATASET != "AlphaFoldDataset" && $DATASET != "RCSBDataset" ]]; then

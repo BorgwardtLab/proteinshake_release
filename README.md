@@ -4,6 +4,6 @@ It also outsources packages with incompatible licenses (cd-hit and MADOKA) which
 
 Clone the repo to Euler, create a venv with proteinshake, activate it, and run:
 
-sbatch --wrap "sh submit.sh" -o logs/wrapper.txt
+sbatch --wrap "sh submit.sh"
 
 This will submit a few thousand jobs on Euler and copy the result back to Borg.
