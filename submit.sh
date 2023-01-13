@@ -1,26 +1,17 @@
-
-CLUSTER_NJOBS=10
-DOWNLOAD_NJOBS=10
-MEM=10 # 100GB
-MEM_PER_CPU=$(($MEM*1024/$CLUSTER_NJOBS))
-STRUCTURE_TIME="20:00" #"30-0"
-SEQUENCE_TIME="20:00" #"23:00:00"
-PARSE_TIME="20:00" #"23:00:00"
-
-export TAG="12JAN2023"
-export GLOBAL_SCRATCH="/cluster/scratch/kucerat/proteinshake/$TAG"
-export RELEASE_DIR="borg:/links/scratch/borg/scratch/Datasets/proteinshake/$TAG"
-LOGDIR="./logs/$TAG"
-
-
-datasets=("RCSBDataset" "GeneOntologyDataset" "EnzymeCommissionDataset" "PfamDataset" "ProteinProteinInterfaceDataset" "ProteinLigandInterfaceDataset" "TMAlignDataset" "SCOPDataset" "AlphaFoldDataset")
-organisms=("arabidopsis_thaliana" "caenorhabditis_elegans" "candida_albicans" "danio_rerio" "dictyostelium_discoideum" "drosophila_melanogaster" "escherichia_coli" "glycine_max" "homo_sapiens" "methanocaldococcus_jannaschii" "mus_musculus" "oryza_sativa" "rattus_norvegicus" "saccharomyces_cerevisiae" "schizosaccharomyces_pombe" "zea_mays" "swissprot")
-
-datasets=("RCSBDataset" "AlphaFoldDataset")
-organisms=("methanocaldococcus_jannaschii")
+#!/bin/bash
+MAX_TASKS=1000
+export TAG=13JAN2023
+export SHAKE_SCRATCH=/cluster/scratch/kucerat/proteinshake/$TAG
+export SHAKE_STORE=borg:/links/scratch/borg/scratch/Datasets/proteinshake/$TAG
+export HTTP_PROXY=proxy.ethz.ch:3128
+export HTTPS_PROXY=proxy.ethz.ch:3128
+LOGDIR=./logs/$TAG
 
 mkdir -p $LOGDIR
-mkdir -p $GLOBAL_SCRATCH
+exec &>> $LOGDIR/submit.txt
+
+datasets=("GeneOntologyDataset" "EnzymeCommissionDataset" "PfamDataset" "ProteinProteinInterfaceDataset" "ProteinLigandInterfaceDataset" "TMAlignDataset" "SCOPDataset" "RCSBDataset" "AlphaFoldDataset")
+organisms=("arabidopsis_thaliana" "caenorhabditis_elegans" "candida_albicans" "danio_rerio" "dictyostelium_discoideum" "drosophila_melanogaster" "escherichia_coli" "glycine_max" "homo_sapiens" "methanocaldococcus_jannaschii" "mus_musculus" "oryza_sativa" "rattus_norvegicus" "saccharomyces_cerevisiae" "schizosaccharomyces_pombe" "zea_mays" "swissprot")
 
 for DATASET in "${datasets[@]}"; do
     if [[ $DATASET == "AlphaFoldDataset" ]]; then
@@ -35,14 +26,21 @@ for DATASET in "${datasets[@]}"; do
             NAME=$DATASET
         fi
         # download
-        python -m main --njobs $DOWNLOAD_NJOBS --dataset $DATASET --organism $ORGANISM --download
+        sbatch --ntasks 1 --cpus-per-task 20 --mem-per-cpu 3G --time 23:59:00 -o $LOGDIR/${NAME}_download.log -J $NAME --wait --wrap "python -m main --njobs 5 --dataset $DATASET --organism $ORGANISM"
+        echo "$DATASET downloaded."
         # parse
-        JOBID1=$(sbatch --parsable --ntasks 1 --cpus-per-task $CLUSTER_NJOBS --mem-per-cpu $MEM_PER_CPU --tmp $MEM --time $PARSE_TIME -o $LOGDIR/${NAME}_parse.log -J $NAME --wrap "python -m main --njobs $CLUSTER_NJOBS --dataset $DATASET --organism $ORGANISM")
-        # sequence clustering
-        JOBID2=$(sbatch --parsable --ntasks 1 --cpus-per-task $CLUSTER_NJOBS --mem-per-cpu $MEM_PER_CPU --tmp $MEM --time $SEQUENCE_TIME -o $LOGDIR/${NAME}_sequence.log -J $NAME --dependency=afterok:$JOBID1 --wrap "python -m cluster_sequence --njobs $CLUSTER_NJOBS --dataset $DATASET --organism $ORGANISM")
-        # structure clustering
-        JOBID3=$(sbatch --parsable --ntasks 1 --cpus-per-task $CLUSTER_NJOBS --mem-per-cpu $MEM_PER_CPU --tmp $MEM --time $STRUCTURE_TIME -o $LOGDIR/${NAME}_structure.log -J $NAME --dependency=afterok:$JOBID2 --wrap "python -m cluster_structure --njobs $CLUSTER_NJOBS --dataset $DATASET --organism $ORGANISM")
-        # cleanup
-        JOBID4=$(sbatch --parsable --ntasks 1 --cpus-per-task 1 --mem-per-cpu 5G --tmp 5G --time 3:59:00 -o $LOGDIR/${NAME}_clean.log -J $NAME --dependency=afterok:$JOBID3 --wrap "rm -r $GLOBAL_SCRATCH; rm -r $LOCAL_SCRATCH")
+        if [[ $DATASET != "AlphaFoldDataset" && $DATASET != "RCSBDataset" ]]; then
+            # sequence clustering
+            sbatch --ntasks 1 --cpus-per-task 100 --mem-per-cpu 1G --time 3:59:00 -o $LOGDIR/${NAME}_sequence.log -J $NAME --wait --wrap "python -m cluster_sequence --njobs 100 --dataset $DATASET --organism $ORGANISM"
+            echo "$DATASET sequence clustering done."
+            # structure clustering: prepare
+            sbatch --ntasks 1 --cpus-per-task 1 --mem-per-cpu 50G --time 3:59:00 -o $LOGDIR/${NAME}_structure_prepare.log -J $NAME --wait --wrap "python -m cluster_structure --prepare --njobs 1 --dataset $DATASET --organism $ORGANISM"
+            # structure clustering: compute
+            NUM_TASKS=$(find $SHAKE_SCRATCH/$NAME/jobs -name "*.txt" | wc -l)
+            echo "Submitting $NUM_TASKS jobs for structure clustering."
+            JOBID=$(sbatch --parsable --ntasks 1 --cpus-per-task 1 --mem-per-cpu 10G --time 3:59:00 -o $LOGDIR/${NAME}_structure_compute.log -J $NAME --array 0-$NUM_TASKS%$MAX_TASKS --wrap "python -m cluster_structure --compute --njobs 1 --dataset $DATASET --organism $ORGANISM")
+            # structure clustering: collect
+            sbatch --ntasks 1 --cpus-per-task 1 --mem-per-cpu 50G --time 3:59:00 -o $LOGDIR/${NAME}_structure_collect.log -J $NAME --dependency $JOBID --wrap "python -m cluster_structure --collect --njobs 1 --dataset $DATASET --organism $ORGANISM"
+        fi
     done
 done

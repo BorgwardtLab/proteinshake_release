@@ -8,7 +8,14 @@ import os.path as osp
 import itertools
 from joblib import Parallel, delayed
 from collections import defaultdict
-from main import get_dataset, replace_avro_files, transfer_dataset
+from main import get_dataset, replace_avro_files, transfer_dataset, transfer_file
+from tqdm import tqdm
+from functools import partialmethod
+
+# slow down tqdm
+tqdm.__init__ = partialmethod(tqdm.__init__, mininterval=60*60) # once per hour
+
+THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9]
 
 def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
     """ Cluster sequences using CD-hit
@@ -88,16 +95,15 @@ def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
 def compute_clusters_sequence(dataset):
     """ Use CDHit to cluster sequences. Assigns the field 'sequence_cluster' to an integer cluster ID for each protein.
     """
-    proteins = list(dataset.proteins()[0])
-    if isinstance(dataset.similarity_threshold_sequence, float):
-        thresholds = [dataset.similarity_threshold_sequence]
-    else:
-        thresholds = dataset.similarity_threshold_sequence
+    print('Starting sequence clustering.')
 
+    proteins = list(dataset.proteins()[0])
     representatives = {}
     sequences = [p['protein']['sequence'] for p in proteins]
     ids = [p['protein']['ID'] for p in proteins]
-    for threshold in thresholds:
+
+    for threshold in THRESHOLDS:
+        print(f'Threshold {threshold}')
         clusters, reps = cdhit_wrapper(ids, sequences, sim_thresh=threshold, n_jobs=dataset.n_jobs)
         representatives[threshold] = reps
         if clusters == -1:
@@ -106,9 +112,11 @@ def compute_clusters_sequence(dataset):
         for p, c in zip(proteins, clusters):
             p['protein'][f'sequence_cluster_{threshold}'] = c
     save(representatives, f'{dataset.root}/{dataset.name}.cdhit.json')
+    transfer_file(f'{dataset.root}/{dataset.name}.cdhit.json', 'sequence')
     replace_avro_files(dataset, proteins)
+    print('Sequence clustering done.')
 
 if __name__ == '__main__':
-    ds = get_dataset()
+    ds, args = get_dataset()
     compute_clusters_sequence(ds)
     transfer_dataset(ds, 'sequence')

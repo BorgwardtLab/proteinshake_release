@@ -1,6 +1,11 @@
 from proteinshake.utils import write_avro
 import importlib, argparse, os, shutil, subprocess
 from proteinshake.utils import zip_file
+from tqdm import tqdm
+from functools import partialmethod
+
+# slow down tqdm
+tqdm.__init__ = partialmethod(tqdm.__init__, mininterval=60*60) # once per hour
 
 def replace_avro_files(dataset, proteins):
     residue_proteins = list(dataset.proteins(resolution='residue')[0])
@@ -11,12 +16,14 @@ def replace_avro_files(dataset, proteins):
     write_avro(list(residue_proteins), f'{dataset.root}/{dataset.name}.residue.avro')
     write_avro(list(atom_proteins), f'{dataset.root}/{dataset.name}.atom.avro')
 
+def transfer_file(file, folder):
+    if os.path.exists(file):
+        zip_file(file)
+        subprocess.call(['rsync', f'{file}.gz', os.path.expandvars(f'$SHAKE_STORE/{folder}/')])
+
 def transfer_dataset(ds, folder):
-    if os.path.exists(f'{ds.root}/{ds.name}.atom.avro') and os.path.exists(f'{ds.root}/{ds.name}.residue.avro'):
-        zip_file(f'{ds.root}/{ds.name}.atom.avro')
-        zip_file(f'{ds.root}/{ds.name}.residue.avro')
-        subprocess.call(['rsync', f'{ds.root}/{ds.name}.atom.avro.gz', os.path.expandvars(f'$RELEASE_DIR/{folder}')])
-        subprocess.call(['rsync', f'{ds.root}/{ds.name}.residue.avro.gz', os.path.expandvars(f'$RELEASE_DIR/{folder}')])
+    transfer_file(f'{ds.root}/{ds.name}.atom.avro', folder)
+    transfer_file(f'{ds.root}/{ds.name}.residue.avro', folder)
 
 def get_dataset():
     datasets = importlib.import_module('proteinshake.datasets')
@@ -25,30 +32,22 @@ def get_dataset():
     parser.add_argument('--njobs', type=int, help='Number of jobs.', default=10)
     parser.add_argument('--dataset', type=str, help='Name of the dataset class (case sensitive)', default='RCSBDataset')
     parser.add_argument('--organism', type=str, help='Organism (for AlphaFold datasets)', default='swissprot')
-    parser.add_argument('--download', action='store_true', help='Stops after download')
+    parser.add_argument('--prepare', action='store_true')
+    parser.add_argument('--compute', action='store_true')
+    parser.add_argument('--collect', action='store_true')
     args = parser.parse_args()
 
     DATASET, ORGANISM, n_jobs = args.dataset, args.organism, args.njobs
     NAME = f'{DATASET}_{ORGANISM}' if DATASET == 'AlphaFoldDataset' else DATASET
-    ROOT = os.path.expandvars(f'$TMPDIR/proteinshake/$TAG/{NAME}')
-    print(args)
-    os.makedirs(ROOT, exist_ok=True)
+    ROOT = os.path.expandvars(f'$SHAKE_SCRATCH/{NAME}')
 
     Dataset = getattr(datasets, DATASET)
-    Dataset.limit = 10
-    if args.download:
-        ROOT = os.path.expandvars(f'$GLOBAL_SCRATCH/{NAME}')
-        print(ROOT)
-        Dataset.parse = lambda self: None
-    else:
-        if os.path.exists(ROOT):
-            shutil.rmtree(ROOT)
-        shutil.copytree(os.path.expandvars(f'$GLOBAL_SCRATCH/{NAME}'), ROOT)
+    #Dataset.limit = 100
     if DATASET == 'AlphaFoldDataset':
-        return Dataset(root=ROOT, organism=ORGANISM, use_precomputed=False, n_jobs=n_jobs)
+        return Dataset(root=ROOT, organism=ORGANISM, use_precomputed=False, n_jobs=n_jobs), args
     else:
-        return Dataset(root=ROOT, use_precomputed=False, n_jobs=n_jobs)
+        return Dataset(root=ROOT, use_precomputed=False, n_jobs=n_jobs), args
 
 if __name__ == '__main__':
-    ds = get_dataset()
+    ds, args = get_dataset()
     transfer_dataset(ds, 'parsed')

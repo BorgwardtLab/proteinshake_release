@@ -1,13 +1,20 @@
-import os, shutil, subprocess
+import os, shutil, subprocess, glob
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from tqdm import tqdm
-from proteinshake.utils import save, unzip_file, write_avro
+from proteinshake.utils import load, save, unzip_file, write_avro
 
 import itertools
 from joblib import Parallel, delayed
 from collections import defaultdict
-from main import get_dataset, replace_avro_files, transfer_dataset
+from main import get_dataset, replace_avro_files, transfer_dataset, transfer_file
+from tqdm import tqdm
+from functools import partialmethod
+
+# slow down tqdm
+tqdm.__init__ = partialmethod(tqdm.__init__, mininterval=60*60) # once per hour
+
+THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9]
 
 def tmalign_wrapper(pdb1, pdb2):
     """Compute TM score with TMalign between two PDB structures.
@@ -36,73 +43,85 @@ def tmalign_wrapper(pdb1, pdb2):
         return -1.
     return float(TM1), float(TM2), float(RMSD)
 
-def compute_clusters_structure(dataset):
-    """ Launch TMalign on all pairs of proteins in dataset.
-    Assign a cluster ID to each protein at protein-level key 'structure_cluster'.
-    Saves TMalign output to `dataset.root/{Dataset.__class__}.tmalign.json.gz`
-    Parameters:
-    -----------
-    paths: list
-        List of paths to original pdb files (after filtering).
-    """
+def prepare(dataset):
     proteins = list(dataset.proteins()[0])
     path_dict = {dataset.get_id_from_filename(os.path.basename(f)):f for f in dataset.get_raw_files()}
     paths = [path_dict[p['protein']['ID']] for p in proteins]
-
-    dump_name = f'{dataset.name}.tmalign.json'
-    dump_path = os.path.join(dataset.root, dump_name)
-
-    if dataset.n_jobs == 1:
-        print('Computing the TM scores with use_precompute = False is very slow. Consider increasing n_jobs.')
-
     paths = [unzip_file(p, remove=False) if not os.path.exists(p.rstrip('.gz')) else p.rstrip('.gz') for p in tqdm(paths, desc='Unzipping')]
-
     pdbids = [dataset.get_id_from_filename(p) for p in paths]
     pairs = list(itertools.combinations(range(len(paths)), 2))
-    todo = [(paths[p1], paths[p2]) for p1, p2 in pairs]
+    todo = [f'{paths[p1]} {paths[p2]}' for p1, p2 in pairs]
+    BATCH_SIZE = 1000
+    for job_id, i in enumerate(range(0,len(todo), BATCH_SIZE)):
+        with open(f'{dataset.root}/jobs/{job_id}.txt', 'w') as file:
+            file.write('\n'.join(todo[i:i+BATCH_SIZE]))
 
-    dist = defaultdict(lambda: {})
 
-    output = Parallel(n_jobs=dataset.n_jobs)(
-        delayed(tmalign_wrapper)(*pair) for pair in tqdm(todo, desc='TMalign')
-    )
-
-    for (pdb1, pdb2), d in zip(todo, output):
+def compute_clusters_structure(dataset):
+    job_path = os.path.expandvars(f'{dataset.root}/jobs/$SLURM_ARRAY_TASK_ID')
+    with open(job_path+'.txt', 'r') as file:
+        todo = list(map(lambda x: x.split(), file.readlines()))
+    tmscore = defaultdict(lambda: {})
+    rmsd = defaultdict(lambda: {})
+    for pdb1,pdb2 in tqdm(todo, desc='TMalign'):
         name1 = dataset.get_id_from_filename(pdb1)
         name2 = dataset.get_id_from_filename(pdb2)
-        # each value is a tuple (tm-core, RMSD)
-        dist[name1][name2] = (d[0], d[2])
-        dist[name2][name1] = (d[0], d[2])
+        tm1, tm2, _rmsd = tmalign_wrapper(pdb1, pdb2)
+        tmscore[name1][name2], tmscore[name2][name1] = tm1, tm2
+        rmsd[name1][name2], rmsd[name2][name1] = _rmsd, _rmsd
+    save(dict(tmscore), job_path+'.tmalign.json')
+    save(dict(rmsd), job_path+'.rmsd.json')
 
-    save(dist, dump_path)
-    num_proteins = len(paths)
+
+def collect(dataset):
+    tmscore = {}
+    for path in glob.glob(f'{dataset.root}/jobs/*.tmalign.json'):
+        tmscore = {**tmscore, **load(path)}
+    save(tmscore, f'{dataset.root}/{dataset.name}.tmalign.json')
+    transfer_file(f'{dataset.root}/{dataset.name}.tmalign.json', 'structure')
+
+    rmsd = {}
+    for path in glob.glob(f'{dataset.root}/jobs/*.rmsd.json'):
+        rmsd = {**rmsd, **load(path)}
+    save(rmsd, f'{dataset.root}/{dataset.name}.rmsd.json')
+    transfer_file(f'{dataset.root}/{dataset.name}.rmsd.json', 'structure')
+
+    proteins = list(dataset.proteins()[0])
+    path_dict = {dataset.get_id_from_filename(os.path.basename(f)):f for f in dataset.get_raw_files()}
+    paths = [path_dict[p['protein']['ID']] for p in proteins]
+    pdbids = [dataset.get_id_from_filename(p) for p in paths]
+
+    num_proteins = len(pdbids)
     DM = np.zeros((num_proteins, num_proteins))
     DM = []
     for i in range(num_proteins):
         for j in range(i+1, num_proteins):
-            # take the largest TMscore (most similar) between both
-            # directions and convert to a distance
             DM.append(
                 1 - max(
-                    dist[pdbids[i]][pdbids[j]][0],
-                    dist[pdbids[j]][pdbids[i]][0]
+                    tmscore[pdbids[i]][pdbids[j]],
+                    tmscore[pdbids[j]][pdbids[i]]
                 )
             )
     DM = np.array(DM).reshape(-1, 1)
 
-    if isinstance(dataset.similarity_threshold_structure, float):
-        thresholds = [dataset.similarity_threshold_structure]
-    else:
-        thresholds = dataset.similarity_threshold_structure
-
-    for d in thresholds:
+    for d in THRESHOLDS:
         clusterer = AgglomerativeClustering(n_clusters=None, distance_threshold=(1-d))
         clusterer.fit(DM)
         for i, p in enumerate(proteins):
             p['protein'][f'structure_cluster_{d}'] = int(clusterer.labels_[i])
+
     replace_avro_files(dataset, proteins)
+    transfer_dataset(dataset, 'structure')
+    print('All data collected.')
+
+
 
 if __name__ == '__main__':
-    ds = get_dataset()
-    compute_clusters_structure(ds)
-    transfer_dataset(ds, 'structure')
+    ds, args = get_dataset()
+    if args.prepare:
+        os.makedirs(f'{ds.root}/jobs', exist_ok=True)
+        prepare(ds)
+    elif args.compute:
+        compute_clusters_structure(ds)
+    elif args.collect:
+        collect(ds)

@@ -1,3 +1,9 @@
-This repository is used to outsource packages with incompatible licenses (cd-hit and MADOKA). It patches in functions to compute sequence and structure similarities in the backend of proteinshake, which will be added to the avro files we upload to Zenodo.
+This repository contains the code for releasing proteinshake datasets.
 
-This repository will be used for the release.
+It also outsources packages with incompatible licenses (cd-hit and MADOKA) which are used for sequence and structure clustering.
+
+Clone the repo to Euler, create a venv with proteinshake, activate it, and run:
+
+sbatch --wrap "sh submit.sh" -o logs/wrapper.txt
+
+This will submit a few thousand jobs on Euler and copy the result back to Borg.
