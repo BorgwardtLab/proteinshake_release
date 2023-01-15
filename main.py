@@ -45,6 +45,8 @@ def get_dataset():
     #Dataset.limit = 100
     if DATASET == 'AlphaFoldDataset':
         return Dataset(root=ROOT, organism=ORGANISM, use_precomputed=False, n_jobs=n_jobs), args
+    elif DATASET in ['RCSBDataset','GeneOntologyDataset','EnzymeCommissionDataset','SCOPDataset','PfamDataset']:
+        return Dataset(root=ROOT, use_precomputed=False, n_jobs=n_jobs, max_requests=5), args
     else:
         return Dataset(root=ROOT, use_precomputed=False, n_jobs=n_jobs), args
 

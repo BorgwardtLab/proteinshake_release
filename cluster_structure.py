@@ -15,6 +15,7 @@ from functools import partialmethod
 tqdm.__init__ = partialmethod(tqdm.__init__, mininterval=60*60) # once per hour
 
 THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9]
+BATCH_SIZE = int(os.getenv('BATCHSIZE'))
 
 def tmalign_wrapper(pdb1, pdb2):
     """Compute TM score with TMalign between two PDB structures.
@@ -47,14 +48,22 @@ def prepare(dataset):
     proteins = list(dataset.proteins()[0])
     path_dict = {dataset.get_id_from_filename(os.path.basename(f)):f for f in dataset.get_raw_files()}
     paths = [path_dict[p['protein']['ID']] for p in proteins]
-    paths = [unzip_file(p, remove=False) if not os.path.exists(p.rstrip('.gz')) else p.rstrip('.gz') for p in tqdm(paths, desc='Unzipping')]
     pdbids = [dataset.get_id_from_filename(p) for p in paths]
-    pairs = list(itertools.combinations(range(len(paths)), 2))
-    todo = [f'{paths[p1]} {paths[p2]}' for p1, p2 in pairs]
-    BATCH_SIZE = 1000
-    for job_id, i in enumerate(range(0,len(todo), BATCH_SIZE)):
+    paths = [unzip_file(p, remove=False) if not os.path.exists(p.rstrip('.gz')) else p.rstrip('.gz') for p in tqdm(paths, desc='Unzipping')]
+    pairs = itertools.combinations(range(len(paths)), 2)
+    todo = (f'{paths[p1]} {paths[p2]}' for p1, p2 in pairs)
+    job_id = 0
+    while True:
+        chunk_it = itertools.islice(todo, BATCH_SIZE)
+        try:
+            first_el = next(chunk_it)
+        except StopIteration:
+            break
+        batch = itertools.chain((first_el,), chunk_it)
         with open(f'{dataset.root}/jobs/{job_id}.txt', 'w') as file:
-            file.write('\n'.join(todo[i:i+BATCH_SIZE]))
+            file.write('\n'.join(batch))
+        job_id += 1
+    print(f'Prepared {job_id} jobs.')
 
 
 def compute_clusters_structure(dataset):
