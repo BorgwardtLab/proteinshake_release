@@ -9,11 +9,13 @@ export BATCHSIZE=20000
 LOGDIR=./logs/$TAG
 
 mkdir -p $LOGDIR
-exec &>> $LOGDIR/submit.txt
 
 datasets=("GeneOntologyDataset" "EnzymeCommissionDataset" "PfamDataset" "ProteinProteinInterfaceDataset" "ProteinLigandInterfaceDataset" "TMAlignDataset" "SCOPDataset" "RCSBDataset" "AlphaFoldDataset")
 
 organisms=("arabidopsis_thaliana" "caenorhabditis_elegans" "candida_albicans" "danio_rerio" "dictyostelium_discoideum" "drosophila_melanogaster" "escherichia_coli" "glycine_max" "homo_sapiens" "methanocaldococcus_jannaschii" "mus_musculus" "oryza_sativa" "rattus_norvegicus" "saccharomyces_cerevisiae" "schizosaccharomyces_pombe" "zea_mays" "swissprot")
+
+tasks=("EnzymeCommissionTask" "BindingSitePredictionTask" "LigandAffinityTask" "SCOPTask" "RetrieveTask")
+task_roots=("EnzymeCommissionDataset" "ProteinLigandInterfaceDataset" "ProteinLigandInterfaceDataset" "SCOPDataset" "TMAlignDataset")
 
 #datasets=("GeneOntologyDataset" "EnzymeCommissionDataset" "PfamDataset" "RCSBDataset" "AlphaFoldDataset")
 #organisms=("methanocaldococcus_jannaschii")

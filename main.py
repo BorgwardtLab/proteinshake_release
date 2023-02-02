@@ -18,8 +18,10 @@ def replace_avro_files(dataset, proteins):
 
 def transfer_file(file, folder):
     if os.path.exists(file):
-        zip_file(file)
-        subprocess.call(['rsync', f'{file}.gz', os.path.expandvars(f'$SHAKE_STORE/{folder}/')])
+        if not file.endswith('.gz'):
+            zip_file(file)
+            file += '.gz'
+        subprocess.call(['rsync', f'{file}', os.path.expandvars(f'$SHAKE_STORE/{folder}/')])
 
 def transfer_dataset(ds, folder):
     transfer_file(f'{ds.root}/{ds.name}.atom.avro', folder)
@@ -35,21 +37,32 @@ def get_dataset():
     parser.add_argument('--prepare', action='store_true')
     parser.add_argument('--compute', action='store_true')
     parser.add_argument('--collect', action='store_true')
+    parser.add_argument('--task',  type=str, help='Task', default='none')
     args = parser.parse_args()
 
-    DATASET, ORGANISM, n_jobs = args.dataset, args.organism, args.njobs
+    DATASET, ORGANISM, TASK, n_jobs = args.dataset, args.organism, args.task, args.njobs
     NAME = f'{DATASET}_{ORGANISM}' if DATASET == 'AlphaFoldDataset' else DATASET
     ROOT = os.path.expandvars(f'$SHAKE_SCRATCH/{NAME}')
 
     Dataset = getattr(datasets, DATASET)
     #Dataset.limit = 100
     if DATASET == 'AlphaFoldDataset':
-        return Dataset(root=ROOT, organism=ORGANISM, use_precomputed=False, n_jobs=n_jobs), args
+        ds = Dataset(root=ROOT, organism=ORGANISM, use_precomputed=False, n_jobs=n_jobs)
     elif DATASET in ['RCSBDataset','GeneOntologyDataset','EnzymeCommissionDataset','SCOPDataset','PfamDataset']:
-        return Dataset(root=ROOT, use_precomputed=False, n_jobs=n_jobs, max_requests=5), args
+        ds = Dataset(root=ROOT, use_precomputed=False, n_jobs=n_jobs, max_requests=5)
     else:
-        return Dataset(root=ROOT, use_precomputed=False, n_jobs=n_jobs), args
+        ds = Dataset(root=ROOT, use_precomputed=False, n_jobs=n_jobs)
+
+    if TASK != 'none':
+        tasks = importlib.import_module('proteinshake.tasks')
+        Task = getattr(tasks, TASK)
+        task = Task(root=ROOT, use_precomputed=False)
+
+    return ds, args
 
 if __name__ == '__main__':
     ds, args = get_dataset()
-    transfer_dataset(ds, 'parsed')
+    if args.task != 'none':
+        transfer_file(f'{ds.root}/{args.task}.json.gz', 'tasks')
+    else:
+        transfer_dataset(ds, 'parsed')

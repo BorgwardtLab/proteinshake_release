@@ -1,10 +1,10 @@
-import os, shutil, subprocess, glob
+import os, shutil, subprocess, glob, gzip
 import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from tqdm import tqdm
 from proteinshake.utils import load, save, unzip_file, write_avro
 
-import itertools
+import itertools, time
 from joblib import Parallel, delayed
 from collections import defaultdict
 from main import get_dataset, replace_avro_files, transfer_dataset, transfer_file
@@ -41,14 +41,13 @@ def tmalign_wrapper(pdb1, pdb2):
         path1, path2, TM1, TM2, RMSD, ID1, ID2, IDali, L1, L2, Lali = out.split('\n')[1].split('\t')
     except Exception as e:
         print(e)
-        return -1.
+        return 0
     return float(TM1), float(TM2), float(RMSD)
 
 def prepare(dataset):
     proteins = list(dataset.proteins()[0])
     path_dict = {dataset.get_id_from_filename(os.path.basename(f)):f for f in dataset.get_raw_files()}
     paths = [path_dict[p['protein']['ID']] for p in proteins]
-    pdbids = [dataset.get_id_from_filename(p) for p in paths]
     paths = [unzip_file(p, remove=False) if not os.path.exists(p.rstrip('.gz')) else p.rstrip('.gz') for p in tqdm(paths, desc='Unzipping')]
     pairs = itertools.combinations(range(len(paths)), 2)
     todo = (f'{paths[p1]} {paths[p2]}' for p1, p2 in pairs)
@@ -68,49 +67,60 @@ def prepare(dataset):
 
 def compute_clusters_structure(dataset):
     job_path = os.path.expandvars(f'{dataset.root}/jobs/$SLURM_ARRAY_TASK_ID')
+    #if os.path.exists(job_path+'.tmalign.json') and os.path.exists(job_path+'.tmalign.json'):
+        #return
     with open(job_path+'.txt', 'r') as file:
         todo = list(map(lambda x: x.split(), file.readlines()))
     tmscore = defaultdict(lambda: {})
     rmsd = defaultdict(lambda: {})
-    for pdb1,pdb2 in tqdm(todo, desc='TMalign'):
-        name1 = dataset.get_id_from_filename(pdb1)
-        name2 = dataset.get_id_from_filename(pdb2)
+    start = time.time()
+    for pdb1,pdb2 in todo:
+        name1 = dataset.get_id_from_filename(os.path.basename(pdb1))
+        name2 = dataset.get_id_from_filename(os.path.basename(pdb2))
         tm1, tm2, _rmsd = tmalign_wrapper(pdb1, pdb2)
         tmscore[name1][name2], tmscore[name2][name1] = tm1, tm2
         rmsd[name1][name2], rmsd[name2][name1] = _rmsd, _rmsd
     save(dict(tmscore), job_path+'.tmalign.json')
     save(dict(rmsd), job_path+'.rmsd.json')
+    job_id = os.path.basename(job_path)
+    duration = int((time.time()-start)/60)
+    print(f'Computed job {job_id} in {duration} min.')
 
 
 def collect(dataset):
-    tmscore = {}
-    for path in glob.glob(f'{dataset.root}/jobs/*.tmalign.json'):
-        tmscore = {**tmscore, **load(path)}
-    save(tmscore, f'{dataset.root}/{dataset.name}.tmalign.json')
-    transfer_file(f'{dataset.root}/{dataset.name}.tmalign.json', 'structure')
-
-    rmsd = {}
-    for path in glob.glob(f'{dataset.root}/jobs/*.rmsd.json'):
-        rmsd = {**rmsd, **load(path)}
-    save(rmsd, f'{dataset.root}/{dataset.name}.rmsd.json')
-    transfer_file(f'{dataset.root}/{dataset.name}.rmsd.json', 'structure')
 
     proteins = list(dataset.proteins()[0])
+    pdbids = [p['protein']['ID'] for p in proteins]
     path_dict = {dataset.get_id_from_filename(os.path.basename(f)):f for f in dataset.get_raw_files()}
-    paths = [path_dict[p['protein']['ID']] for p in proteins]
-    pdbids = [dataset.get_id_from_filename(p) for p in paths]
-
+    paths = [path_dict[id] for id in pdbids]
     num_proteins = len(pdbids)
+
+    def get_matrix(file, default):
+        d = defaultdict(dict)
+        for path in glob.glob(f'{dataset.root}/jobs/*.{file}.json'):
+            for k,v in load(path).items():
+                d[k] = {**d[k], **v}
+        mat = np.zeros((num_proteins, num_proteins))
+        for i,id1 in enumerate(pdbids):
+            for j,id2 in enumerate(pdbids):
+                mat[i][j] = d[id1][id2] if i != j else default
+        return mat
+
+    tmscore = get_matrix('tmalign', default=1)
+    with gzip.open(f'{dataset.root}/{dataset.name}.tmscore.npy.gz', 'w') as file:
+        np.save(file=file, arr=tmscore)
+    transfer_file(f'{dataset.root}/{dataset.name}.tmscore.npy.gz', 'structure')
+
+    rmsd = get_matrix('rmsd', default=0)
+    with gzip.open(f'{dataset.root}/{dataset.name}.rmsd.npy.gz', 'w') as file:
+        np.save(file=file, arr=rmsd)
+    transfer_file(f'{dataset.root}/{dataset.name}.rmsd.npy.gz', 'structure')
+
     DM = np.zeros((num_proteins, num_proteins))
     DM = []
     for i in range(num_proteins):
         for j in range(i+1, num_proteins):
-            DM.append(
-                1 - max(
-                    tmscore[pdbids[i]][pdbids[j]],
-                    tmscore[pdbids[j]][pdbids[i]]
-                )
-            )
+            DM.append(1 - max(tmscore[i][j], tmscore[j][i]))
     DM = np.array(DM).reshape(-1, 1)
 
     for d in THRESHOLDS:
