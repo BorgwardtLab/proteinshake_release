@@ -1,21 +1,7 @@
-import os, shutil, subprocess, tempfile
-import numpy as np
-from sklearn.cluster import AgglomerativeClustering
-from tqdm import tqdm
-from proteinshake.utils import save, unzip_file, write_avro
+import shutil, subprocess, tempfile
+from proteinshake.utils import save
 import os.path as osp
-
-import itertools
-from joblib import Parallel, delayed
-from collections import defaultdict
-from main import get_dataset, replace_avro_files, transfer_dataset, transfer_file
 from tqdm import tqdm
-from functools import partialmethod
-
-# slow down tqdm
-tqdm.__init__ = partialmethod(tqdm.__init__, mininterval=60*60) # once per hour
-
-THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9]
 
 def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
     """ Cluster sequences using CD-hit
@@ -92,7 +78,7 @@ def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
             clusters = [clusters[id] if id in clusters else -1 for id in ids]
             return clusters, representatives
 
-def compute_clusters_sequence(dataset):
+def compute_clusters_sequence(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9]):
     """ Use CDHit to cluster sequences. Assigns the field 'sequence_cluster' to an integer cluster ID for each protein.
     """
     print('Starting sequence clustering.')
@@ -102,7 +88,7 @@ def compute_clusters_sequence(dataset):
     sequences = [p['protein']['sequence'] for p in proteins]
     ids = [p['protein']['ID'] for p in proteins]
 
-    for threshold in THRESHOLDS:
+    for threshold in thresholds:
         print(f'Threshold {threshold}')
         clusters, reps = cdhit_wrapper(ids, sequences, sim_thresh=threshold, n_jobs=dataset.n_jobs)
         representatives[threshold] = reps
@@ -111,12 +97,7 @@ def compute_clusters_sequence(dataset):
             return
         for p, c in zip(proteins, clusters):
             p['protein'][f'sequence_cluster_{threshold}'] = c
-    save(representatives, f'{dataset.root}/{dataset.name}.cdhit.json')
-    transfer_file(f'{dataset.root}/{dataset.name}.cdhit.json', 'sequence')
+    save(representatives, f'{dataset.root}/{dataset.name}.sequence_cluster_centers.json')
     replace_avro_files(dataset, proteins)
     print('Sequence clustering done.')
 
-if __name__ == '__main__':
-    ds, args = get_dataset()
-    compute_clusters_sequence(ds)
-    transfer_dataset(ds, 'sequence')
