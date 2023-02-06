@@ -2,6 +2,7 @@ import shutil, subprocess, tempfile
 from proteinshake.utils import save
 import os.path as osp
 from tqdm import tqdm
+from util import replace_avro_files
 
 def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
     """ Cluster sequences using CD-hit
@@ -97,7 +98,7 @@ def compute_clusters_sequence(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9]):
             return
         for p, c in zip(proteins, clusters):
             p['protein'][f'sequence_cluster_{threshold}'] = c
-    save(representatives, f'{dataset.root}/{dataset.name}.sequence_cluster_centers.json')
+    save(representatives, f'{dataset.root}/{dataset.name}.cdhit.json')
     replace_avro_files(dataset, proteins)
     print('Sequence clustering done.')
 

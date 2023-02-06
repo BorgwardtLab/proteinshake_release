@@ -43,6 +43,8 @@ for name, organism in ALL_DATASETS:
 
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
-    transfer_file(f'{ds.root}/{ds.name}.sequence_cluster_centers.json', RELEASE)
-    transfer_file(f'{ds.root}/{ds.name}.structure_cluster_centers.npz', RELEASE)
+    transfer_file(f'{ds.root}/{ds.name}.cdhit.json', RELEASE)
+    transfer_file(f'{ds.root}/{ds.name}.tm.npy', RELEASE)
+    transfer_file(f'{ds.root}/{ds.name}.rmsd.npy', RELEASE)
+    transfer_file(f'{ds.root}/{ds.name}.gdt.npy', RELEASE)
     
