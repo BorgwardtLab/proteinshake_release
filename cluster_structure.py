@@ -13,6 +13,8 @@ def batched(iterable, size=10):
 
 def compute_clusters_structure(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]):
 
+    print(f'Structure clustering {dataset.name}')
+
     proteins = list(dataset.proteins()[0])
     pdbids = [p['protein']['ID'] for p in proteins]
     path_dict = {dataset.get_id_from_filename(os.path.basename(f)):f for f in dataset.get_raw_files()}
@@ -25,8 +27,8 @@ def compute_clusters_structure(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8
     np.fill_diagonal(TM, 1.0), np.fill_diagonal(RMSD, 0.0), np.fill_diagonal(GDT, 1.0)
 
     combinations = itertools.combinations(range(num_proteins), 2)
-    chunk_size = 10
-    for chunk in tqdm(batched(combinations, chunk_size), desc='Structure clustering', total=int(np.ceil((num_proteins**2-num_proteins)/2/chunk_size))):
+    chunk_size = dataset.n_jobs*10_000 # 10.000 per core per chunk
+    for chunk in tqdm(batched(combinations, chunk_size), desc='Chunk', total=int(np.ceil((num_proteins**2-num_proteins)/2/chunk_size))):
         chunk = np.array([(x,y) for x,y in chunk if np.isnan(TM[x,y]) or np.isnan(RMSD[x,y]) or np.isnan(GDT[x,y])])
         if len(chunk) == 0: continue
         d = Parallel(n_jobs=dataset.n_jobs)(delayed(tmalign_wrapper)(paths[i], paths[j]) for i,j in chunk)
@@ -49,8 +51,6 @@ def compute_clusters_structure(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8
         for i, p in enumerate(proteins):
             p['protein'][f'structure_cluster_{threshold}'] = int(clusterer.labels_[i])
     replace_avro_files(dataset, proteins)
-    print(proteins[0]['protein'])
-    print('Sequence clustering done.')
 
 
 

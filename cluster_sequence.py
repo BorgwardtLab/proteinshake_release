@@ -82,7 +82,9 @@ def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
 def compute_clusters_sequence(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9]):
     """ Use CDHit to cluster sequences. Assigns the field 'sequence_cluster' to an integer cluster ID for each protein.
     """
-    print('Starting sequence clustering.')
+    if osp.exists(f'{dataset.root}/{dataset.name}.cdhit.json'): return
+
+    print(f'Sequence clustering {dataset.name}')
 
     proteins = list(dataset.proteins()[0])
     representatives = {}
@@ -90,7 +92,6 @@ def compute_clusters_sequence(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9]):
     ids = [p['protein']['ID'] for p in proteins]
 
     for threshold in thresholds:
-        print(f'Threshold {threshold}')
         clusters, reps = cdhit_wrapper(ids, sequences, sim_thresh=threshold, n_jobs=dataset.n_jobs)
         representatives[threshold] = reps
         if clusters == -1:
@@ -100,5 +101,4 @@ def compute_clusters_sequence(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9]):
             p['protein'][f'sequence_cluster_{threshold}'] = c
     save(representatives, f'{dataset.root}/{dataset.name}.cdhit.json')
     replace_avro_files(dataset, proteins)
-    print('Sequence clustering done.')
 

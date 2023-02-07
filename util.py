@@ -28,19 +28,16 @@ def transfer_dataset(ds, dest, remove=False):
     if remove:
         shutil.rmtree(ds.root)
 
-def get_dataset(root, name, organism=None, n_jobs=20):
+def get_dataset(root, name, organism=None, n_jobs=1):
     if name.endswith('Task'):
         Task = getattr(TASKS, name)
-        root = f'{root}/{Task.DatasetClass}'
-        task = Task(root=root, use_precomputed=False)
+        root = f'{root}/{Task.DatasetClass.__name__}'
+        return Task(root=root, use_precomputed=False)
     else:
         Dataset = getattr(DATASETS, name)
         root = f'{root}/{name}'
-        #Dataset.limit = 100
-        if DATASET == 'AlphaFoldDataset':
-            ds = Dataset(root=root, organism=organism, use_precomputed=False, n_jobs=n_jobs)
-        elif DATASET in ['RCSBDataset','GeneOntologyDataset','EnzymeCommissionDataset','SCOPDataset','PfamDataset']:
-            ds = Dataset(root=root, use_precomputed=False, n_jobs=n_jobs, max_requests=5)
+        Dataset.limit = 100
+        if name == 'AlphaFoldDataset':
+            return Dataset(root=root, organism=organism, use_precomputed=False, n_jobs=n_jobs)
         else:
-            ds = Dataset(root=root, use_precomputed=False, n_jobs=n_jobs)
-    return ds
+            return Dataset(root=root, use_precomputed=False, n_jobs=n_jobs)

@@ -1,12 +1,11 @@
 This repository contains the code for releasing proteinshake datasets.
 
-It also outsources packages with incompatible licenses (cd-hit and MADOKA) which are used for sequence and structure clustering.
+To release, install `proteinshake`, `TMalign`, and `cd-hit`:
 
-Clone the repo to Euler, create a venv with proteinshake, activate it, and run:
+https://github.com/BorgwardtLab/proteinshake
+https://zhanggroup.org/TM-align/TMalign.cpp
+https://github.com/weizhongli/cdhit
 
-sh submit_parse.sh (few hours)
-sh submit_sequence.sh (few minutes)
-sh submit_structure.sh (several days)
-sh submit_tasks.sh (few minutes)
+Adjust the `SCRATCH`, `RELEASE`, `NJOBS` variables in `release.py` according to your system.
 
-This will submit a few thousand jobs on Euler and copy the result back to Borg. Wait until each script has finished before submitting the next one.
+Then run: `python release.py`
