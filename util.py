@@ -1,7 +1,7 @@
 import importlib, argparse, os, shutil, subprocess, random
 from tqdm import tqdm
 from functools import partialmethod
-from proteinshake.utils import write_avro, zip_file
+from proteinshake.utils import write_avro, zip_file, unzip_file
 
 DATASETS = importlib.import_module('proteinshake.datasets')
 TASKS = importlib.import_module('proteinshake.tasks')
@@ -36,7 +36,7 @@ def get_dataset(root, name, organism=None, n_jobs=1):
     else:
         Dataset = getattr(DATASETS, name)
         root = f'{root}/{name}'
-        Dataset.limit = 1000
+        Dataset.limit = 100
         if name == 'AlphaFoldDataset':
             return Dataset(root=root, organism=organism, use_precomputed=False, n_jobs=n_jobs)
         else:

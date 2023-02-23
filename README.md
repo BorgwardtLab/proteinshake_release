@@ -9,3 +9,5 @@ https://github.com/weizhongli/cdhit
 Adjust the `SCRATCH`, `RELEASE`, `NJOBS` variables in `release.py` according to your system.
 
 Then run: `python release.py`
+
+Note that this repository is licensed under GPLv3, due to dependency licenses.

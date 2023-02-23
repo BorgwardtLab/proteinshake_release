@@ -4,6 +4,7 @@ from proteinshake.datasets import __all__ as DATASETS
 from proteinshake.tasks import __all__ as TASKS
 from proteinshake.datasets.alphafold import AF_DATASET_NAMES
 from util import get_dataset, transfer_dataset, transfer_file
+from surface import compute_surface
 from sequence_split import compute_sequence_split
 from structure_split import compute_structure_split
 
@@ -35,17 +36,23 @@ for name, organism in ALL_DATASETS:
     ds = get_dataset(SCRATCH, name, organism, NJOBS)
 print('Downloaded all datasets.')
 
-# sequence clustering
+# sequence splitting
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
-    compute_sequence_split(ds)
+    pass#compute_sequence_split(ds)
 print('Clustered all sequences.')
 
-# structure clustering
+# structure splitting
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
-    compute_structure_split(ds)
+    pass#compute_structure_split(ds)
 print('Clustered all structures.')
+
+# compute surface
+for name, organism in ALL_DATASETS:
+    ds = get_dataset(SCRATCH, name, organism, NJOBS)
+    compute_surface(ds)
+print('Clustered all sequences.')
 
 # compute tasks
 for name in TASKS:
@@ -57,16 +64,11 @@ print('Transferring...')
 for name, organism in ALL_DATASETS:
     ds = get_dataset(SCRATCH, name, organism, NJOBS)
     transfer_dataset(ds, RELEASE)
-for name in TASK_DATASETS:
-    ds = get_dataset(SCRATCH, name, None, NJOBS)
-    transfer_file(f'{ds.root}/{ds.name}.cdhit.json', RELEASE)
-    transfer_file(f'{ds.root}/{ds.name}.tm.npy', RELEASE)
-    transfer_file(f'{ds.root}/{ds.name}.rmsd.npy', RELEASE)
-    transfer_file(f'{ds.root}/{ds.name}.gdt.npy', RELEASE)
 for name in TASKS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
     transfer_file(f'{ds.root}/{ds.name}.json', RELEASE)
 
+# archiving
 print('Archiving...')
 with tarfile.open(f'{RELEASE}.tar', 'w') as tar:
     tar.add(RELEASE, arcname=os.path.basename(RELEASE))
