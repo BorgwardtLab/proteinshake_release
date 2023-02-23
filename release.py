@@ -11,10 +11,10 @@ AF_DATASET_NAMES = ['methanocaldococcus_jannaschii']
 
 ######## VARIABLES #########
 
-TAG = '10FEB2023' #datetime.now().strftime('%d%b%Y').upper() # release tag, set to the current date
+TAG = 'test' #datetime.now().strftime('%d%b%Y').upper() # release tag, set to the current date
 SCRATCH = os.path.expandvars(f'$LOCAL_SCRATCH/proteinshake/{TAG}') # local scratch directory to avoid IO bottlenecks during processing
 RELEASE = os.path.expandvars(f'$GLOBAL_SCRATCH/Datasets/proteinshake/{TAG}/') # final release directory to save the result files
-NJOBS = 130 # number of jobs
+NJOBS = 20 # number of jobs
 
 ###########################
 
@@ -26,7 +26,9 @@ DATASETS = [d for d in DATASETS if not d in ['Dataset','AlphaFoldDataset']] # fi
 ALL_DATASETS = list(zip(DATASETS,[None]*len(DATASETS))) + list(zip(['AlphaFoldDataset']*len(AF_DATASET_NAMES), AF_DATASET_NAMES)) # zip with organism name
 TASKS = [t for t in TASKS if t != 'Task']
 
-TASK_DATASETS = ['EnzymeCommissionDataset', 'ProteinProteinInterfaceDataset', 'ProteinLigandInterfaceDataset', 'TMAlignDataset', 'SCOPDataset', 'PfamDataset', 'GeneOntologyDataset'] # fix order for now
+TASK_DATASETS = ['GeneOntologyDataset']
+TASKS = []
+ALL_DATASETS = [('GeneOntologyDataset',None)]
 
 # download data
 for name, organism in ALL_DATASETS:

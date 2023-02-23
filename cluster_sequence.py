@@ -86,7 +86,7 @@ def compute_clusters_sequence(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9]):
 
     print(f'Sequence clustering {dataset.name}')
 
-    proteins = list(dataset.proteins()[0])
+    proteins = list(dataset.proteins())
     representatives = {}
     sequences = [p['protein']['sequence'] for p in proteins]
     ids = [p['protein']['ID'] for p in proteins]

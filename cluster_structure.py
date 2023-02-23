@@ -1,56 +1,77 @@
-import os, itertools
-from proteinshake.utils import tmalign_wrapper, unzip_file
+import os, itertools, tempfile, random, subprocess
 from tqdm import tqdm
-import numpy as np
-from joblib import Parallel, delayed
 from util import replace_avro_files
-from sklearn.cluster import AgglomerativeClustering
 
-def batched(iterable, size=10):
-    iterator = iter(iterable)
-    for first in iterator:
-        yield itertools.chain([first], itertools.islice(iterator, size - 1))
+def foldseek_create_database(ds):
+    pdb_path = f'{ds.root}/raw/files/'
+    out_path = f'{ds.root}/raw/foldseek/'
+    db_path = f'{out_path}/foldseekDB'
+    os.makedirs(out_path, exist_ok=True)
+    cmd = ['foldseek', 'createdb', pdb_path, db_path]
+    out = subprocess.run(cmd, capture_output=True, text=True)
+    cmd = ['foldseek', 'createindex', db_path, out_path]
+    out = subprocess.run(cmd, capture_output=True, text=True)
 
-def compute_clusters_structure(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]):
+def foldseek_wrapper(ds, query, threshold):
+    db_path = f'{ds.root}/raw/foldseek/foldseekDB'
+    out_path = f'{ds.root}/raw/foldseek/'
+    out_file = f'{out_path}/output.m8'
+    try:
+        cmd = ['foldseek', 'easy-search', query, db_path, out_file, out_path,
+            '--threads', str(ds.n_jobs),
+            '--max-seqs', '1000000000',
+            '--lddt-threshold', str(threshold),
+            '--format-output', 'target'
+        ]
+        out = subprocess.run(cmd, capture_output=True, text=True)
+        with open(out_file, 'r') as file:
+            return file.read().split()
+    except Exception as e:
+        return []
 
-    print(f'Structure clustering {dataset.name}')
+def split(ds, pool, testsize, threshold, n=10, seed=42):
+    random.seed(seed)
+    test = []
+    i = 0
+    while len(test) < testsize:
+        i += 1
+        print(f'\rSampling cluster\t{i}\t({len(test)}/{testsize})', end='')
+        query = random.choice(pool)
+        cluster = foldseek_wrapper(ds, query, threshold)
+        cluster = list(set([c.rstrip('_A') for c in cluster])) # remove chain ID
+        if len(cluster) < n: continue
+        cluster = random.sample(cluster, n)
+        test.extend(cluster)
+        pool = [p for p in pool if not p in cluster]
+    print()
+    return pool, test
 
-    proteins = list(dataset.proteins()[0])
-    pdbids = [p['protein']['ID'] for p in proteins]
+def get_paths(dataset):
+    pdbids = [p['protein']['ID'] for p in dataset.proteins()]
     path_dict = {dataset.get_id_from_filename(os.path.basename(f)):f for f in dataset.get_raw_files()}
     paths = [path_dict[id] for id in pdbids]
-    paths = [unzip_file(p, remove=False) if not os.path.exists(p.rstrip('.gz')) else p.rstrip('.gz') for p in tqdm(paths, desc='Unzipping')]
-    num_proteins = len(proteins)
-    savepath = f'{dataset.root}/{dataset.name}'
+    return paths
 
-    TM, RMSD, GDT = [np.load(f'{savepath}.{m}.npy') if os.path.exists(f'{savepath}.{m}.npy') else np.ones((num_proteins,num_proteins), dtype=np.float16) * np.nan for m in ['tm','rmsd','gdt']]
-    np.fill_diagonal(TM, 1.0), np.fill_diagonal(RMSD, 0.0), np.fill_diagonal(GDT, 1.0)
+def compute_clusters_structure(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], testsize=0.1, valsize=0.1):
 
-    combinations = itertools.combinations(range(num_proteins), 2)
-    chunk_size = dataset.n_jobs*10_000 # 10.000 per core per chunk
-    for chunk in tqdm(batched(combinations, chunk_size), desc='Chunk', total=int(np.ceil((num_proteins**2-num_proteins)/2/chunk_size))):
-        chunk = np.array([(x,y) for x,y in chunk if np.isnan(TM[x,y]) or np.isnan(RMSD[x,y]) or np.isnan(GDT[x,y])])
-        if len(chunk) == 0: continue
-        d = Parallel(n_jobs=dataset.n_jobs)(delayed(tmalign_wrapper)(paths[i], paths[j]) for i,j in chunk)
-        x,y = tuple(chunk[:,0]), tuple(chunk[:,1])
-        TM[x,y] = [x['TM1'] for x in d]
-        TM[y,x] = [x['TM2'] for x in d]
-        RMSD[x,y] = [x['RMSD'] for x in d]
-        RMSD[y,x] = [x['RMSD'] for x in d]
-        GDT[x,y] = [x['GDT'] for x in d]
-        GDT[y,x] = [x['GDT'] for x in d]
-        # save periodically
-        np.save(f'{savepath}.tm.npy', TM)
-        np.save(f'{savepath}.rmsd.npy', RMSD)
-        np.save(f'{savepath}.gdt.npy', GDT)
- 
-    # clustering
+    print(f'Structure clustering {dataset.name}')
+    proteins = list(dataset.proteins())
+    paths = get_paths(dataset)
+    foldseek_create_database(dataset)
+
     for threshold in thresholds:
-        clusterer = AgglomerativeClustering(n_clusters=None, distance_threshold=(1-threshold), metric='precomputed', linkage='average')
-        clusterer.fit(1-GDT)
-        for i, p in enumerate(proteins):
-            p['protein'][f'structure_cluster_{threshold}'] = int(clusterer.labels_[i])
+        pool = [p for p in paths]
+        n_test, n_val = int(len(pool)*testsize), int(len(pool)*valsize)
+        pool, test = split(dataset, pool, n_test, threshold)
+        train, val = split(dataset, pool, n_val, threshold)
+        train, test, val = [dataset.get_id_from_filename(p) for p in train], [dataset.get_id_from_filename(p) for p in test], [dataset.get_id_from_filename(p) for p in val]
+        for p in proteins:
+            p['protein'][f'split_{threshold}'] = 'test' if p['protein']['ID'] in test else 'train'
+            p['protein'][f'split_{threshold}'] = 'val' if p['protein']['ID'] in val else 'train'
     replace_avro_files(dataset, proteins)
+
+
+
 
 
 

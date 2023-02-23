@@ -7,8 +7,8 @@ DATASETS = importlib.import_module('proteinshake.datasets')
 TASKS = importlib.import_module('proteinshake.tasks')
 
 def replace_avro_files(dataset, proteins):
-    residue_proteins = list(dataset.proteins(resolution='residue')[0])
-    atom_proteins = list(dataset.proteins(resolution='atom')[0])
+    residue_proteins = list(dataset.proteins(resolution='residue'))
+    atom_proteins = list(dataset.proteins(resolution='atom'))
     for r,a,p in zip(residue_proteins,atom_proteins,proteins):
         r['protein'] = p['protein']
         a['protein'] = p['protein']
