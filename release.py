@@ -4,8 +4,8 @@ from proteinshake.datasets import __all__ as DATASETS
 from proteinshake.tasks import __all__ as TASKS
 from proteinshake.datasets.alphafold import AF_DATASET_NAMES
 from util import get_dataset, transfer_dataset, transfer_file
-from cluster_sequence import compute_clusters_sequence
-from cluster_structure import compute_clusters_structure
+from sequence_split import compute_sequence_split
+from structure_split import compute_structure_split
 
 AF_DATASET_NAMES = ['methanocaldococcus_jannaschii']
 
@@ -38,13 +38,13 @@ print('Downloaded all datasets.')
 # sequence clustering
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
-    compute_clusters_sequence(ds)
+    compute_sequence_split(ds)
 print('Clustered all sequences.')
 
 # structure clustering
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
-    compute_clusters_structure(ds)
+    compute_structure_split(ds)
 print('Clustered all structures.')
 
 # compute tasks

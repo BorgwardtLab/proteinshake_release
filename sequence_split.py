@@ -2,7 +2,8 @@ import shutil, subprocess, tempfile
 from proteinshake.utils import save
 import os.path as osp
 from tqdm import tqdm
-from util import replace_avro_files
+from util import replace_avro_files, get_paths, split
+from collections import defaultdict
 
 def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
     """ Cluster sequences using CD-hit
@@ -23,7 +24,7 @@ def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
     representatives: list
         List of sequence indices to preserve as representatives.
     """
-    assert sim_thresh >= 0.4 and sim_thresh <= 1, "Threshold not in [0.4, 1]"
+    assert sim_thresh >= 0.4 and sim_thresh <= 1, "Similarity threshold not in [0.4, 1]"
 
     if sim_thresh >= 0.4 and sim_thresh < 0.5:
         word_size = 2
@@ -65,40 +66,41 @@ def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
             return -1
         else:
             # parse cluster assignments
-            clusters = {}
-            representatives = []
+            pdb2cluster = {}
+            cluster2pdb = defaultdict(list)
             with open(out_file + ".clstr", "r") as out:
                 for line in out:
                     if line.startswith(">"):
                         clust_id = int(line.split()[1])
                         continue
                     pdb_id = line.split(">")[1].split('.')[0]
-                    clusters[pdb_id] = clust_id
-                    if line.endswith('*'):
-                        representatives.append(pdb_id)
-            clusters = [clusters[id] if id in clusters else -1 for id in ids]
-            return clusters, representatives
+                    pdb2cluster[pdb_id] = clust_id
+                    cluster2pdb[clust_id].append(pdb_id)
+            return pdb2cluster, cluster2pdb
 
-def compute_clusters_sequence(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9]):
+
+def compute_sequence_split(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9], testsize=0.1, valsize=0.1):
     """ Use CDHit to cluster sequences. Assigns the field 'sequence_cluster' to an integer cluster ID for each protein.
     """
     if osp.exists(f'{dataset.root}/{dataset.name}.cdhit.json'): return
 
-    print(f'Sequence clustering {dataset.name}')
+    print(f'Sequence split {dataset.name}')
 
     proteins = list(dataset.proteins())
-    representatives = {}
     sequences = [p['protein']['sequence'] for p in proteins]
-    ids = [p['protein']['ID'] for p in proteins]
+    pdbids, paths, path_dict = get_paths(dataset)
 
     for threshold in thresholds:
-        clusters, reps = cdhit_wrapper(ids, sequences, sim_thresh=threshold, n_jobs=dataset.n_jobs)
-        representatives[threshold] = reps
-        if clusters == -1:
-            print("Sequence clustering failed.")
-            return
-        for p, c in zip(proteins, clusters):
-            p['protein'][f'sequence_cluster_{threshold}'] = c
-    save(representatives, f'{dataset.root}/{dataset.name}.cdhit.json')
+        pdb2cluster, cluster2pdb = cdhit_wrapper(pdbids, sequences, sim_thresh=threshold, n_jobs=dataset.n_jobs)
+        def split_wrapper(ds, query, threshold):
+            return cluster2pdb[pdb2cluster[query]]
+        pool = [p for p in pdbids]
+        n_test, n_val = int(len(pool)*testsize), int(len(pool)*valsize)
+        pool, test = split(split_wrapper, dataset, pool, n_test, threshold)
+        train, val = split(split_wrapper, dataset, pool, n_val, threshold)
+        train, test, val = [dataset.get_id_from_filename(p) for p in train], [dataset.get_id_from_filename(p) for p in test], [dataset.get_id_from_filename(p) for p in val]
+        for p in proteins:
+            p['protein'][f'split_{threshold}'] = 'test' if p['protein']['ID'] in test else 'train'
+            p['protein'][f'split_{threshold}'] = 'val' if p['protein']['ID'] in val else 'train'
     replace_avro_files(dataset, proteins)
 
