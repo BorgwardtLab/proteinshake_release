@@ -79,7 +79,7 @@ def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
             return pdb2cluster, cluster2pdb
 
 
-def compute_sequence_split(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9], testsize=0.1, valsize=0.1):
+def compute_sequence_split(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9], test_ratio=0.1, val_ratio=0.1):
     """ Use CDHit to cluster sequences. Assigns the field 'sequence_cluster' to an integer cluster ID for each protein.
     """
     if osp.exists(f'{dataset.root}/{dataset.name}.cdhit.json'): return
@@ -95,12 +95,12 @@ def compute_sequence_split(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9], testsi
         def split_wrapper(ds, query, threshold):
             return cluster2pdb[pdb2cluster[query]]
         pool = [p for p in pdbids]
-        n_test, n_val = int(len(pool)*testsize), int(len(pool)*valsize)
-        pool, test = split(split_wrapper, dataset, pool, n_test, threshold)
-        train, val = split(split_wrapper, dataset, pool, n_val, threshold)
+        test_size, val_size = int(len(pool)*test_ratio), int(len(pool)*val_ratio)
+        pool, test = split(split_wrapper, dataset, pool, test_size, threshold)
+        train, val = split(split_wrapper, dataset, pool, val_size, threshold)
         train, test, val = [dataset.get_id_from_filename(p) for p in train], [dataset.get_id_from_filename(p) for p in test], [dataset.get_id_from_filename(p) for p in val]
         for p in proteins:
-            p['protein'][f'split_{threshold}'] = 'test' if p['protein']['ID'] in test else 'train'
-            p['protein'][f'split_{threshold}'] = 'val' if p['protein']['ID'] in val else 'train'
+            p['protein'][f'sequence_split_{threshold}'] = 'test' if p['protein']['ID'] in test else 'train'
+            p['protein'][f'sequence_split_{threshold}'] = 'val' if p['protein']['ID'] in val else 'train'
     replace_avro_files(dataset, proteins)
 

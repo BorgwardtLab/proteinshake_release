@@ -36,7 +36,7 @@ def foldseek_wrapper(ds, query, threshold):
     except Exception as e:
         return []
 
-def compute_structure_split(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], testsize=0.1, valsize=0.1):
+def compute_structure_split(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], test_ratio=0.1, val_ratio=0.1):
 
     print(f'Structure split {dataset.name}')
     
@@ -46,13 +46,13 @@ def compute_structure_split(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0
 
     for threshold in thresholds:
         pool = [p for p in paths]
-        n_test, n_val = int(len(pool)*testsize), int(len(pool)*valsize)
-        pool, test = split(foldseek_wrapper, dataset, pool, n_test, threshold)
-        train, val = split(foldseek_wrapper, dataset, pool, n_val, threshold)
+        test_size, val_size = int(len(pool)*test_ratio), int(len(pool)*val_ratio)
+        pool, test = split(foldseek_wrapper, dataset, pool, test_size, threshold)
+        train, val = split(foldseek_wrapper, dataset, pool, val_size, threshold)
         train, test, val = [dataset.get_id_from_filename(p) for p in train], [dataset.get_id_from_filename(p) for p in test], [dataset.get_id_from_filename(p) for p in val]
         for p in proteins:
-            p['protein'][f'split_{threshold}'] = 'test' if p['protein']['ID'] in test else 'train'
-            p['protein'][f'split_{threshold}'] = 'val' if p['protein']['ID'] in val else 'train'
+            p['protein'][f'structure_split_{threshold}'] = 'test' if p['protein']['ID'] in test else 'train'
+            p['protein'][f'structure_split_{threshold}'] = 'val' if p['protein']['ID'] in val else 'train'
     replace_avro_files(dataset, proteins)
 
 
