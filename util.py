@@ -15,19 +15,6 @@ def replace_avro_files(dataset, proteins):
     write_avro(list(residue_proteins), f'{dataset.root}/{dataset.name}.residue.avro')
     write_avro(list(atom_proteins), f'{dataset.root}/{dataset.name}.atom.avro')
 
-def transfer_file(file, dest):
-    if os.path.exists(file):
-        if not file.endswith('.gz'):
-            zip_file(file)
-            file += '.gz'
-        subprocess.call(['rsync', f'{file}', dest])
-
-def transfer_dataset(ds, dest, remove=False):
-    transfer_file(f'{ds.root}/{ds.name}.atom.avro', dest)
-    transfer_file(f'{ds.root}/{ds.name}.residue.avro', dest)
-    if remove:
-        shutil.rmtree(ds.root)
-
 def get_dataset(root, name, organism=None, n_jobs=1):
     if name.endswith('Task'):
         Task = getattr(TASKS, name)
@@ -48,11 +35,11 @@ def get_paths(dataset):
     paths = [path_dict[id] for id in pdbids]
     return pdbids, paths, path_dict
 
-def split(wrapper, ds, pool, testsize, threshold, n=1, seed=42):
+def split(wrapper, ds, pool, test_size, threshold, n=1, seed=42):
     random.seed(seed)
     test = []
-    with tqdm(total=testsize, desc='Sampling split') as pbar:
-        while len(test) < testsize:
+    with tqdm(total=test_size, desc='Sampling split') as pbar:
+        while len(test) < test_size:
             query = random.choice(pool)
             cluster = wrapper(ds, query, threshold)
             if len(cluster) < n: continue

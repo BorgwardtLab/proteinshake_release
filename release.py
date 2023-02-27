@@ -1,4 +1,4 @@
-import os, tarfile
+import os, tarfile, shutil
 from datetime import datetime
 from proteinshake.datasets import __all__ as DATASETS
 from proteinshake.tasks import __all__ as TASKS
@@ -13,21 +13,20 @@ AF_DATASET_NAMES = ['methanocaldococcus_jannaschii']
 
 TAG = 'test' #datetime.now().strftime('%d%b%Y').upper() # release tag, set to the current date
 SCRATCH = os.path.expandvars(f'$LOCAL_SCRATCH/proteinshake/{TAG}') # local scratch directory to avoid IO bottlenecks during processing
-RELEASE = os.path.expandvars(f'$GLOBAL_SCRATCH/Datasets/proteinshake/{TAG}/') # final release directory to save the result files
+DESTINATION = os.path.expandvars(f'$GLOBAL_SCRATCH/Datasets/proteinshake/{TAG}/') # final release directory to save the result files
 NJOBS = 20 # number of jobs
 
 ###########################
 
-os.makedirs(RELEASE, exist_ok=True)
+os.makedirs(f'{SCRATCH}/release', exist_ok=True)
+os.makedirs(DESTINATION, exist_ok=True)
 
 # construct dataset iterator
 TASK_DATASETS = [d for d in DATASETS if not d in ['Dataset','AlphaFoldDataset','RCSBDataset']] # filter unlabeled datasets
 DATASETS = [d for d in DATASETS if not d in ['Dataset','AlphaFoldDataset']] # filter parent class and AF
 ALL_DATASETS = list(zip(DATASETS,[None]*len(DATASETS))) + list(zip(['AlphaFoldDataset']*len(AF_DATASET_NAMES), AF_DATASET_NAMES)) # zip with organism name
-TASKS = [t for t in TASKS if t != 'Task']
 
 TASK_DATASETS = ['GeneOntologyDataset']
-TASKS = []
 ALL_DATASETS = [('GeneOntologyDataset',None)]
 
 # download data
@@ -35,34 +34,34 @@ for name, organism in ALL_DATASETS:
     ds = get_dataset(SCRATCH, name, organism, NJOBS)
 print('Downloaded all datasets.')
 
+# random splitting
+for name in TASK_DATASETS:
+    ds = get_dataset(SCRATCH, name, None, NJOBS)
+    compute_random_split(ds)
+print('Random split ready.')
+
 # sequence splitting
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
-    pass#compute_sequence_split(ds)
-print('Clustered all sequences.')
+    compute_sequence_split(ds)
+print('Sequence split ready.')
 
 # structure splitting
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
-    pass#compute_structure_split(ds)
-print('Clustered all structures.')
+    compute_structure_split(ds)
+print('Structure split ready.')
 
-# compute tasks
-for name in TASKS:
-    ds = get_dataset(SCRATCH, name, None, NJOBS)
-print('Computed all tasks.')
-
-# transfer
-print('Transferring...')
+# collecting release
+print('Collecting...')
 for name, organism in ALL_DATASETS:
     ds = get_dataset(SCRATCH, name, organism, NJOBS)
-    transfer_dataset(ds, RELEASE)
-for name in TASKS:
-    ds = get_dataset(SCRATCH, name, None, NJOBS)
-    transfer_file(f'{ds.root}/{ds.name}.json', RELEASE)
+    shutil.copyfile(f'{ds.root}/{ds.name}.atom.avro', f'{SCRATCH}/release')
+    shutil.copyfile(f'{ds.root}/{ds.name}.residue.avro', f'{SCRATCH}/release')
+    for filename in ds.additional_files:
+        shutil.copyfile(f'{ds.root}/{filename}', f'{SCRATCH}/release')
+with tarfile.open(f'{SCRATCH}/release.tar', 'w') as tar:
+    tar.add(f'{SCRATCH}/release', arcname=f'ProteinShake_Release_{TAG}')
+subprocess.call(['rsync', f'{SCRATCH}/release.tar', DESTINATION])
 
-# archiving
-print('Archiving...')
-with tarfile.open(f'{RELEASE}.tar', 'w') as tar:
-    tar.add(RELEASE, arcname=os.path.basename(RELEASE))
     
