@@ -4,7 +4,6 @@ from proteinshake.datasets import __all__ as DATASETS
 from proteinshake.tasks import __all__ as TASKS
 from proteinshake.datasets.alphafold import AF_DATASET_NAMES
 from util import get_dataset, transfer_dataset, transfer_file
-from surface import compute_surface
 from sequence_split import compute_sequence_split
 from structure_split import compute_structure_split
 
@@ -47,12 +46,6 @@ for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
     pass#compute_structure_split(ds)
 print('Clustered all structures.')
-
-# compute surface
-for name, organism in ALL_DATASETS:
-    ds = get_dataset(SCRATCH, name, organism, NJOBS)
-    compute_surface(ds)
-print('Clustered all sequences.')
 
 # compute tasks
 for name in TASKS:
