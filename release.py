@@ -59,6 +59,9 @@ for name, organism in ALL_DATASETS:
     shutil.copyfile(f'{ds.root}/{ds.name}.atom.avro', f'{SCRATCH}/release')
     shutil.copyfile(f'{ds.root}/{ds.name}.residue.avro', f'{SCRATCH}/release')
     for filename in ds.additional_files:
+        if not filename.endswith('.gz'):
+            zip_file(filename)
+            filename += '.gz'
         shutil.copyfile(f'{ds.root}/{filename}', f'{SCRATCH}/release')
 with tarfile.open(f'{SCRATCH}/release.tar', 'w') as tar:
     tar.add(f'{SCRATCH}/release', arcname=f'ProteinShake_Release_{TAG}')
