@@ -1,4 +1,4 @@
-This repository contains the code for releasing proteinshake datasets.
+This repository contains the code for releasing proteinshake datasets. It also computes the random, sequence, and structure splits.
 
 To release, install `proteinshake`, `foldseek`, and `cd-hit`:
 
