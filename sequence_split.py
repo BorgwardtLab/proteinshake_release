@@ -47,36 +47,30 @@ def cdhit_wrapper(ids, sequences, sim_thresh=0.6, n_jobs=1):
             for id, s in zip(ids,sequences):
                 inp.write(f">{id}\n")
                 inp.write(s + "\n")
-        try:
-            cmd = ['cd-hit',
-                   '-c', str(sim_thresh),
-                   '-i', in_file,
-                   '-n', str(word_size),
-                   '-o', out_file,
-                   '-T', str(n_jobs),
-                   '-M', "0" # unlimited memory
-                  ]
-
-            subprocess.run(cmd,
-                           stdout=subprocess.PIPE,
-                           stderr=subprocess.STDOUT
-                          )
-        except Exception as e:
-            print(traceback.format_exc())
-            return -1
-        else:
-            # parse cluster assignments
-            pdb2cluster = {}
-            cluster2pdb = defaultdict(list)
-            with open(out_file + ".clstr", "r") as out:
-                for line in out:
-                    if line.startswith(">"):
-                        clust_id = int(line.split()[1])
-                        continue
-                    pdb_id = line.split(">")[1].split('.')[0]
-                    pdb2cluster[pdb_id] = clust_id
-                    cluster2pdb[clust_id].append(pdb_id)
-            return pdb2cluster, cluster2pdb
+        cmd = ['cd-hit',
+            '-c', str(sim_thresh),
+            '-i', in_file,
+            '-n', str(word_size),
+            '-o', out_file,
+            '-T', str(n_jobs),
+            '-M', "0" # unlimited memory
+            ]
+        subprocess.run(cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT
+                    )
+        # parse cluster assignments
+        pdb2cluster = {}
+        cluster2pdb = defaultdict(list)
+        with open(out_file + ".clstr", "r") as out:
+            for line in out:
+                if line.startswith(">"):
+                    clust_id = int(line.split()[1])
+                    continue
+                pdb_id = line.split(">")[1].split('.')[0]
+                pdb2cluster[pdb_id] = clust_id
+                cluster2pdb[clust_id].append(pdb_id)
+        return pdb2cluster, cluster2pdb
 
 
 def compute_sequence_split(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9], test_ratio=0.1, val_ratio=0.1):
@@ -93,6 +87,7 @@ def compute_sequence_split(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9], test_r
     for threshold in thresholds:
         pdb2cluster, cluster2pdb = cdhit_wrapper(pdbids, sequences, sim_thresh=threshold, n_jobs=dataset.n_jobs)
         def split_wrapper(ds, query, threshold):
+            if not query in pdb2cluster: return []
             return cluster2pdb[pdb2cluster[query]]
         pool = [p for p in pdbids]
         test_size, val_size = int(len(pool)*test_ratio), int(len(pool)*val_ratio)
@@ -100,7 +95,9 @@ def compute_sequence_split(dataset, thresholds=[0.5, 0.6, 0.7, 0.8, 0.9], test_r
         train, val = split(split_wrapper, dataset, pool, val_size, threshold)
         train, test, val = [dataset.get_id_from_filename(p) for p in train], [dataset.get_id_from_filename(p) for p in test], [dataset.get_id_from_filename(p) for p in val]
         for p in proteins:
-            p['protein'][f'sequence_split_{threshold}'] = 'test' if p['protein']['ID'] in test else 'train'
-            p['protein'][f'sequence_split_{threshold}'] = 'val' if p['protein']['ID'] in val else 'train'
+            if p['protein']['ID'] in test: p['protein'][f'sequence_split_{threshold}'] = 'test'
+            elif p['protein']['ID'] in val: p['protein'][f'sequence_split_{threshold}'] = 'val'
+            elif p['protein']['ID'] in train: p['protein'][f'sequence_split_{threshold}'] = 'train'
+            else: p['protein'][f'sequence_split_{threshold}'] = 'none'
     replace_avro_files(dataset, proteins)
 

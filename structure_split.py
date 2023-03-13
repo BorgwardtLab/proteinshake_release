@@ -1,6 +1,7 @@
 import os, itertools, tempfile, random, subprocess, shutil
 from tqdm import tqdm
 from util import replace_avro_files, get_paths, split
+from joblib import Parallel, delayed
 
 def foldseek_create_database(ds):
     pdb_path = f'{ds.root}/raw/files/'
@@ -23,7 +24,7 @@ def foldseek_wrapper(ds, query, threshold):
     n_jobs = 0 if ds.n_jobs < 0 else ds.n_jobs
     try:
         cmd = ['foldseek', 'easy-search', query, db_path, out_file, out_path,
-            '--threads', str(n_jobs),
+            '--threads', str(min(n_jobs, 10)),
             '--max-seqs', '1000000000',
             '--lddt-threshold', str(threshold),
             '--format-output', 'target'
@@ -51,8 +52,10 @@ def compute_structure_split(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0
         train, val = split(foldseek_wrapper, dataset, pool, val_size, threshold)
         train, test, val = [dataset.get_id_from_filename(p) for p in train], [dataset.get_id_from_filename(p) for p in test], [dataset.get_id_from_filename(p) for p in val]
         for p in proteins:
-            p['protein'][f'structure_split_{threshold}'] = 'test' if p['protein']['ID'] in test else 'train'
-            p['protein'][f'structure_split_{threshold}'] = 'val' if p['protein']['ID'] in val else 'train'
+            if p['protein']['ID'] in test: p['protein'][f'structure_split_{threshold}'] = 'test'
+            elif p['protein']['ID'] in val: p['protein'][f'structure_split_{threshold}'] = 'val'
+            elif p['protein']['ID'] in train: p['protein'][f'structure_split_{threshold}'] = 'train'
+            else: p['protein'][f'structure_split_{threshold}'] = 'none'
     replace_avro_files(dataset, proteins)
 
 
