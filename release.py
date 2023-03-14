@@ -1,4 +1,5 @@
 import os, tarfile, shutil, subprocess
+import pandas as pd
 from datetime import datetime
 from proteinshake.datasets import __all__ as DATASETS
 from proteinshake.tasks import __all__ as TASKS
@@ -8,6 +9,7 @@ from util import get_dataset
 from random_split import compute_random_split
 from sequence_split import compute_sequence_split
 from structure_split import compute_structure_split
+from summary import summary
 
 #AF_DATASET_NAMES = ['methanocaldococcus_jannaschii']
 
@@ -51,6 +53,17 @@ for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
     compute_structure_split(ds)
 print('Structure split ready.')
+
+# summaries
+df = []
+for name, organism in ALL_DATASETS:
+    print(f'Summarizing {name} {organism}')
+    ds = get_dataset(SCRATCH, name, organism, NJOBS)
+    df.append(summary(ds))
+df = pd.DataFrame(df)
+print(df)
+df.to_csv(f'{SCRATCH}/release/summary.csv', index=False)
+zip_file(f'{SCRATCH}/release/summary.csv')
 
 # collecting release
 print('Collecting...')
