@@ -29,19 +29,19 @@ os.makedirs(DESTINATION, exist_ok=True)
 TASK_DATASETS = [d for d in DATASETS if not d in ['Dataset','AlphaFoldDataset','RCSBDataset','ProteinLigandDecoysDataset']] # filter unlabeled datasets
 DATASETS = [d for d in DATASETS if not d in ['Dataset','AlphaFoldDataset']] # filter parent class and AF
 ALL_DATASETS = list(zip(DATASETS,[None]*len(DATASETS))) + list(zip(['AlphaFoldDataset']*len(AF_DATASET_NAMES), AF_DATASET_NAMES)) # zip with organism name
-
+'''
 # download data
 for name, organism in ALL_DATASETS:
     print(f'Downloading {name} {organism}')
     ds = get_dataset(SCRATCH, name, organism, NJOBS)
 print('Downloaded all datasets.')
-
+'''
 # random splitting
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
     compute_random_split(ds)
 print('Random split ready.')
-
+'''
 # sequence splitting
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
@@ -53,7 +53,7 @@ for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
     compute_structure_split(ds)
 print('Structure split ready.')
-
+'''
 # summaries
 df = []
 for name, organism in ALL_DATASETS:
@@ -69,11 +69,7 @@ zip_file(f'{SCRATCH}/release/summary.csv')
 print('Collecting...')
 for name, organism in ALL_DATASETS:
     ds = get_dataset(SCRATCH, name, organism, NJOBS)
-    zip_file(f'{ds.root}/{ds.name}.atom.avro')
-    zip_file(f'{ds.root}/{ds.name}.residue.avro')
-    shutil.copyfile(f'{ds.root}/{ds.name}.atom.avro.gz', f'{SCRATCH}/release/{ds.name}.atom.avro.gz')
-    shutil.copyfile(f'{ds.root}/{ds.name}.residue.avro.gz', f'{SCRATCH}/release/{ds.name}.residue.avro.gz')
-    for filename in ds.additional_files:
+    for filename in [f'{ds.name}.atom.avro', f'{ds.name}.residue.avro'] + ds.additional_files:
         if not filename.endswith('.gz'):
             zip_file(f'{ds.root}/{filename}')
             filename += '.gz'
