@@ -29,19 +29,19 @@ os.makedirs(DESTINATION, exist_ok=True)
 TASK_DATASETS = [d for d in DATASETS if not d in ['Dataset','AlphaFoldDataset','RCSBDataset','ProteinLigandDecoysDataset']] # filter unlabeled datasets
 DATASETS = [d for d in DATASETS if not d in ['Dataset','AlphaFoldDataset']] # filter parent class and AF
 ALL_DATASETS = list(zip(DATASETS,[None]*len(DATASETS))) + list(zip(['AlphaFoldDataset']*len(AF_DATASET_NAMES), AF_DATASET_NAMES)) # zip with organism name
-'''
+
 # download data
 for name, organism in ALL_DATASETS:
     print(f'Downloading {name} {organism}')
     ds = get_dataset(SCRATCH, name, organism, NJOBS)
 print('Downloaded all datasets.')
-'''
+
 # random splitting
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
     compute_random_split(ds)
 print('Random split ready.')
-'''
+
 # sequence splitting
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
@@ -53,7 +53,7 @@ for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
     compute_structure_split(ds)
 print('Structure split ready.')
-'''
+
 # summaries
 df = []
 for name, organism in ALL_DATASETS:
@@ -64,6 +64,7 @@ df = pd.DataFrame(df)
 print(df)
 df.to_csv(f'{SCRATCH}/release/summary.csv', index=False)
 zip_file(f'{SCRATCH}/release/summary.csv')
+os.remove(f'{SCRATCH}/release/summary.csv')
 
 # collecting release
 print('Collecting...')

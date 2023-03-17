@@ -29,13 +29,14 @@ def get_paths(dataset):
     paths = [path_dict[id] for id in pdbids]
     return pdbids, paths, path_dict
 
-def split(wrapper, ds, pool, test_size, threshold, n=10, seed=42, verbose=False):
+def split(wrapper, ds, pool, test_size, threshold, path_dict, n=0.05, seed=42, verbose=False):
     random.seed(seed)
     test = []
+    n = int(test_size*n)
     with tqdm(total=test_size, desc='Sampling split') as pbar:
         while len(test) < test_size:
             query = random.choice(pool)
-            cluster = wrapper(ds, query, threshold)
+            cluster = wrapper(ds, query, threshold, path_dict)
             #if len(cluster) < n: continue
             pool = [p for p in pool if not p in cluster]
             if len(cluster) > n: cluster = random.sample(cluster, n)
