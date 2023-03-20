@@ -33,7 +33,7 @@ def foldseek_wrapper(ds, query, threshold, path_dict):
         out = subprocess.run(cmd, capture_output=True, text=True)
         with open(out_file, 'r') as file:
             cluster = file.read().split()
-            cluster = list(set([c.rstrip('_A').rstrip('.pdb') for c in cluster])) # remove chain ID
+            cluster = list(set([c.split('.pdb')[0] for c in cluster])) # remove chain ID
             return cluster
     except Exception as e:
         return []
