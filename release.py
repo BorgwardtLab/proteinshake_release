@@ -30,6 +30,7 @@ TASK_DATASETS = [d for d in DATASETS if not d in ['Dataset','AlphaFoldDataset','
 DATASETS = [d for d in DATASETS if not d in ['Dataset','AlphaFoldDataset']] # filter parent class and AF
 ALL_DATASETS = list(zip(DATASETS,[None]*len(DATASETS))) + list(zip(['AlphaFoldDataset']*len(AF_DATASET_NAMES), AF_DATASET_NAMES)) # zip with organism name
 
+'''
 # download data
 for name, organism in ALL_DATASETS:
     print(f'Downloading {name} {organism}')
@@ -47,7 +48,7 @@ for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)
     compute_sequence_split(ds)
 print('Sequence split ready.')
-
+'''
 # structure splitting
 for name in TASK_DATASETS:
     ds = get_dataset(SCRATCH, name, None, NJOBS)

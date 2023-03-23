@@ -34,6 +34,7 @@ def foldseek_wrapper(ds, query, threshold, path_dict):
         with open(out_file, 'r') as file:
             cluster = file.read().split()
             cluster = list(set([c.split('.pdb')[0] for c in cluster])) # remove chain ID
+            cluster = [ds.get_id_from_filename(c) for c in cluster]
             return cluster
     except Exception as e:
         return []
@@ -49,9 +50,9 @@ def compute_structure_split(dataset, thresholds=[0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0
     for threshold in thresholds:
         pool = [p for p in pdbids]
         test_size, val_size = int(len(pool)*test_ratio), int(len(pool)*val_ratio)
-        pool, test = split(foldseek_wrapper, dataset, pool, test_size, threshold, path_dict)
-        train, val = split(foldseek_wrapper, dataset, pool, val_size, threshold, path_dict)
-        train, test, val = [dataset.get_id_from_filename(p) for p in train], [dataset.get_id_from_filename(p) for p in test], [dataset.get_id_from_filename(p) for p in val]
+        pool, test = split(foldseek_wrapper, dataset, pool, test_size, threshold, path_dict, pdbids)
+        train, val = split(foldseek_wrapper, dataset, pool, val_size, threshold, path_dict, pdbids)
+        #train, test, val = [dataset.get_id_from_filename(p) for p in train], [dataset.get_id_from_filename(p) for p in test], [dataset.get_id_from_filename(p) for p in val]
         print(f'total: {len(proteins)} train: {len(train)} test: {len(test)} val: {len(val)}')
         for p in proteins:
             if p['protein']['ID'] in test: p['protein'][f'structure_split_{threshold}'] = 'test'
