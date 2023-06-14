@@ -24,7 +24,7 @@ html_pre = """
 table {
   border-collapse: collapse;
   font-family: Monaco;
-  font-size: 16px;
+  font-size: 12px;
 }
 tr:nth-child(even){background-color: #f2f2f2;}
 th {
@@ -56,7 +56,7 @@ for name in DATASETS:
         'Description': ds.__doc__.split('.')[0]
     })
 dataset_table = pd.DataFrame(dataset_table).to_html(index=False)
-with open(f'debug/datasets.html','w') as file:
+with open(f'docs/datasets.html','w') as file:
     file.write(html_pre + dataset_table + html_post)
 
 task_table = []
@@ -70,7 +70,7 @@ for name in TASKS:
         'Output': task.output,
     })
 task_table = pd.DataFrame(task_table).to_html(index=False)
-with open(f'debug/tasks.html','w') as file:
+with open(f'docs/tasks.html','w') as file:
     file.write(html_pre + task_table + html_post)
 
 
