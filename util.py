@@ -19,9 +19,13 @@ def get_dataset(root, name, organism=None, n_jobs=1):
     Dataset = getattr(DATASETS, name)
     #Dataset.limit = 10
     if name == 'AlphaFoldDataset':
-        return Dataset(root=f'{root}/{name}_{organism}', organism=organism, use_precomputed=False, n_jobs=n_jobs)
+        return Dataset(root=f'{root}/{name}_{organism}', organism=organism, use_precomputed=False, n_jobs=n_jobs, skip_signature_check=True)
     else:
-        return Dataset(root=f'{root}/{name}', use_precomputed=False, n_jobs=n_jobs)
+        return Dataset(root=f'{root}/{name}', use_precomputed=False, n_jobs=n_jobs, skip_signature_check=True)
+
+def get_task(root, name, n_jobs=1):
+    Task = getattr(TASKS, name)
+    return Task(root=f'{root}/{Task.DatasetClass.__name__}', use_precomputed=False, n_jobs=n_jobs, skip_signature_check=True)
 
 def get_paths(dataset):
     pdbids = [p['protein']['ID'] for p in dataset.proteins()]
