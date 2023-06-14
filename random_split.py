@@ -16,4 +16,5 @@ def compute_random_split(dataset, test_ratio=0.1, val_ratio=0.1, seed=42):
         elif i in val: p['protein'][f'random_split'] = 'val'
         elif i in train: p['protein'][f'random_split'] = 'train'
         else: p['protein'][f'random_split'] = 'none'
+
     replace_avro_files(dataset, proteins)
