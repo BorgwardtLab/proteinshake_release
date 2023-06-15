@@ -28,11 +28,14 @@ table {
   border-radius: 5px;
   overflow:hidden;
 }
-tr:nth-child(even){background-color: #F2F5F9;}
+tr {
+  background-color: #fff;
+}
 td {
   text-align: left;
   border: 3px solid #e3e8ef;
   padding: 10px;
+  color:#111729;
 }
 th {
   padding: 10px;
@@ -40,6 +43,9 @@ th {
   background-color: #111729;
   border: 3px solid #111729;
   color:#fff;
+}
+tr:nth-child(even){
+  background-color: #F2F5F9;
 }
 </style>
 </head>
