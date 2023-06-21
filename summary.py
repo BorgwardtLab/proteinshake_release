@@ -85,25 +85,43 @@ with open(f'docs/tasks.html','w') as file:
     file.write(html_pre + task_table + html_post)
 
 
-exit()
+
+
 # For each task: label distribution in train/test/val
-TASKS = ['GeneOntologyTask']
-fig = make_subplots(rows=len(TASKS), cols=1)
-for ax,name in enumerate(TASKS):
-    task = get_task(ROOT, name, NJOBS)
-    targets = np.array([task.target(p) for p in task.proteins], dtype=object)
+add_js = 'cdn'
+with open('docs/labels.html','w') as file:
+  file.write("<html><head></head><body>" + "\n")
+  for ax,name in enumerate(TASKS):
+      print(name)
+      task = get_task(ROOT, name, NJOBS)
+      targets = list(task.train_targets) + list(task.test_targets) + list(task.val_targets)
 
-    #if task.type == 'Multilabel Classification':
-    targets = itertools.chain.from_iterable(targets)
-    counts = dict(Counter(targets))
-    plot = go.Bar(x=list(counts.keys()), y=list(counts.values()))
-
-
-    #if task.type == 'Multiclass Classification':
-    #    counts = dict(Counter(targets))
-    #    plot = go.Bar(x=list(counts.keys()), y=list(counts.values()))
-    #if task.type == 'Regression':
-    #    plot = go.Histogram(x=targets, nbinsx=100)
-    fig.add_trace(plot, row=ax+1, col=1)
-fig.update_layout(height=400*len(TASKS), width=600, showlegend=False)
-fig.write_html('debug/test.html')
+      if task.type == 'Multiclass Classification' or task.type == 'Multilabel Classification':
+          token_map = {v:k for k,v in task.token_map.items()}
+          token_map = np.array([token_map[i] for i in range(len(token_map))])
+          if task.type == 'Multilabel Classification':
+              targets = [token_map[np.array(labels, dtype=bool)] for labels in targets]
+              targets = itertools.chain.from_iterable(targets)
+          else:
+              targets = [token_map[label] for label in targets]
+          labels,counts = zip(*Counter(targets).most_common())
+          plot = px.bar(x=labels, y=counts, title=name, labels={'x':'Target Label', 'y':'Count'}, template='plotly_white')
+          plot.update_xaxes(range=[-1, min(20, len(counts))])
+      elif task.type == 'Binary Classification':
+          if name == 'BindingSiteDetectionTask':
+              targets = [task.target(i) for i in task.proteins]
+          counts = [np.array(t).sum() for t in targets]
+          plot = px.histogram(x=counts, nbins=100, title=name, labels={'x':'Number of Residue Contacts', 'count':'Count'}, template='plotly_white')
+          plot.update_layout(yaxis_title="Count")
+      elif task.type == 'Regression':
+          plot = px.histogram(x=targets, nbins=100, title=name, labels={'x':'Target Value', 'count':'Count'}, template='plotly_white')
+          plot.update_layout(yaxis_title="Count")
+      elif task.type == 'Retrieval':
+          lengths = [len(t) for t in targets]
+          plot = px.histogram(x=lengths, nbins=100, title=name, labels={'x':'Number of similar instances', 'count':'Count'}, template='plotly_white')
+          plot.update_layout(yaxis_title="Count")
+      else:
+          continue
+      file.write(plot.to_html(full_html=False, include_plotlyjs=add_js))
+      add_js = False
+  file.write("</body></html>" + "\n")
